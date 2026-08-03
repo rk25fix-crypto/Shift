@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>保育園シフト自動作成 - ワクワク動的UI・完全版</title>
+    <title>保育園シフト自動作成 - 完全カスタム＆アラート版</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Alpine.js -->
@@ -11,46 +11,10 @@
     <!-- ApexCharts.js -->
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
-    <!-- 印刷特化 ＆ カスタムスタイル -->
+    <!-- 印刷特化の魔法（CSS） -->
     <style>
-        /* 読み込み時のチラつき・タブ重なり防止の魔法 */
+        /* 読み込み時のチラつき防止 */
         [x-cloak] { display: none !important; }
-
-        body {
-            font-family: "Hiragino Sans", "ヒラギノ角ゴ ProN", "Yu Gothic Medium", "Meiryo", sans-serif;
-        }
-
-        /* ダイナミックアクション（ホバー＆クリック） */
-        .hover-dynamic {
-            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .hover-dynamic:hover {
-            transform: translateY(-3px) scale(1.02);
-            box-shadow: 0 10px 20px -8px rgba(0,0,0,0.15);
-            z-index: 10;
-        }
-        .hover-dynamic:active {
-            transform: translateY(1px) scale(0.96);
-        }
-
-        /* 希望休クリック時のポップアニメーション */
-        @keyframes pop {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.4); }
-            100% { transform: scale(1); }
-        }
-        .animate-pop {
-            display: inline-block;
-            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        /* ルーレット中の残像エフェクト */
-        .is-roulette {
-            color: #d97706;
-            font-weight: 900;
-            opacity: 0.7;
-            transform: scale(1.1);
-        }
 
         @media print {
             @page { size: landscape; margin: 10mm; }
@@ -70,12 +34,13 @@
             }
             table { width: 100%; border-collapse: collapse; }
             th, td { border: 1px solid #666 !important; padding: 4px 2px !important; }
-            .bg-amber-100 { background-color: #fef3c7 !important; }
-            .bg-rose-50 { background-color: #fff1f2 !important; }
+            .bg-indigo-100 { background-color: #e0e7ff !important; }
+            .bg-red-50 { background-color: #fef2f2 !important; }
             .bg-slate-200 { background-color: #e2e8f0 !important; }
         }
         .print-only { display: none; }
         
+        /* 矢印を消して重なり防止 */
         select.shift-select {
             -webkit-appearance: none;
             -moz-appearance: none;
@@ -86,65 +51,61 @@
         }
     </style>
 </head>
-<body class="bg-amber-50/40 text-stone-800 font-sans antialiased min-h-screen" x-data="shiftApp()" x-init="init()">
+<body class="bg-slate-50 text-slate-800 font-sans antialiased" x-data="shiftApp()" x-init="init()">
 
     <!-- Header (no-print) -->
-    <header class="bg-amber-500 text-white shadow-md no-print relative overflow-hidden">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-            <h1 class="text-xl font-bold flex items-center gap-2 tracking-wide">
-                <span>☀️</span> 保育園早出シフトメーカー <span class="bg-amber-600 px-2.5 py-0.5 rounded-full text-xs font-normal">ナチュラル＆ワクワクDX版</span>
+    <header class="bg-indigo-600 text-white shadow-md no-print">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                保育園早出シフトメーカー <span class="bg-indigo-500 px-2 py-0.5 rounded text-xs">期間・枠指定 ＆ 警告アラート搭載版</span>
             </h1>
-            <!-- ランダム労いメッセージ -->
-            <div class="text-sm font-medium bg-amber-400/30 px-4 py-1.5 rounded-full animate-pulse" x-text="todayMessage"></div>
+            <div class="text-sm bg-indigo-700 px-3 py-1 rounded-full hidden sm:block">
+                スタッフ数: <span x-text="staffs.length"></span>名 | 早出枠: <span x-text="shiftTypes.length"></span>種類
+            </div>
         </div>
     </header>
-
-    <!-- コンプリートお祝いバナー (Fixed) -->
-    <div x-cloak x-show="showComplete" x-transition.enter="transition ease-out duration-500" x-transition.enter-start="opacity-0 translate-y-10" x-transition.enter-end="opacity-100 translate-y-0" x-transition.leave="transition ease-in duration-300" x-transition.leave-start="opacity-100" x-transition.leave-end="opacity-0" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-white font-bold px-8 py-4 rounded-full shadow-2xl z-50 text-xl flex items-center gap-3 border-4 border-white no-print">
-        <span class="text-3xl">🎉</span> PERFECT SHIFT COMPLETE! <span class="text-3xl">✨</span>
-    </div>
 
     <main class="max-w-7xl mx-auto px-4 py-8 space-y-8">
 
         <!-- Tabs (no-print) -->
-        <div class="flex border-b border-amber-200/80 gap-2 sm:gap-4 overflow-x-auto no-print px-2">
-            <button @click="tab = 'staff'; Sound.click()" :class="tab === 'staff' ? 'border-amber-600 text-amber-800 font-bold bg-amber-100/60' : 'border-transparent text-stone-500'" class="pb-3 px-4 py-2 rounded-t-xl font-medium border-b-2 hover-dynamic whitespace-nowrap">1. スタッフ管理 👤</button>
-            <button @click="tab = 'settings'; Sound.click()" :class="tab === 'settings' ? 'border-amber-600 text-amber-800 font-bold bg-amber-100/60' : 'border-transparent text-stone-500'" class="pb-3 px-4 py-2 rounded-t-xl font-medium border-b-2 hover-dynamic whitespace-nowrap">2. 条件・時間設定 🗓</button>
-            <button @click="tab = 'generate'; Sound.click()" :class="tab === 'generate' ? 'border-amber-600 text-amber-800 font-bold bg-amber-100/60' : 'border-transparent text-stone-500'" class="pb-3 px-4 py-2 rounded-t-xl font-medium border-b-2 hover-dynamic whitespace-nowrap">3. AI自動生成 ✨</button>
-            <button @click="tab = 'charts'; setTimeout(() => renderChart(), 50); Sound.click()" :class="tab === 'charts' ? 'border-amber-600 text-amber-800 font-bold bg-amber-100/60' : 'border-transparent text-stone-500'" class="pb-3 px-4 py-2 rounded-t-xl font-medium border-b-2 hover-dynamic whitespace-nowrap">4. 負荷グラフ 📊</button>
-            <button @click="tab = 'data'; Sound.click()" :class="tab === 'data' ? 'border-amber-600 text-amber-800 font-bold bg-amber-100/60' : 'border-transparent text-stone-500'" class="pb-3 px-4 py-2 rounded-t-xl font-medium border-b-2 hover-dynamic whitespace-nowrap">5. データ保存 💾</button>
+        <div class="flex border-b border-slate-200 gap-4 overflow-x-auto no-print">
+            <button @click="tab = 'staff'" :class="tab === 'staff' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'" class="pb-3 px-2 font-medium border-b-2 transition whitespace-nowrap">1. スタッフ管理</button>
+            <button @click="tab = 'settings'" :class="tab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'" class="pb-3 px-2 font-medium border-b-2 transition whitespace-nowrap">2. 条件・時間設定</button>
+            <button @click="tab = 'generate'" :class="tab === 'generate' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'" class="pb-3 px-2 font-medium border-b-2 transition whitespace-nowrap">3. AI自動生成 ＆ 印刷</button>
+            <button @click="tab = 'charts'; setTimeout(() => renderChart(), 50)" :class="tab === 'charts' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'" class="pb-3 px-2 font-medium border-b-2 transition whitespace-nowrap">4. 負荷グラフ</button>
+            <button @click="tab = 'data'" :class="tab === 'data' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'" class="pb-3 px-2 font-medium border-b-2 transition whitespace-nowrap">5. データ保存</button>
         </div>
 
         <!-- TAB 1: Staff -->
-        <div x-cloak x-show="tab === 'staff'" class="space-y-6 no-print">
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100 flex justify-between items-center">
-                <h2 class="text-lg font-bold text-stone-700">スタッフ一覧</h2>
-                <button @click="addStaff(); Sound.click()" class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-sm hover-dynamic">＋ 追加</button>
+        <div x-show="tab === 'staff'" class="space-y-6 no-print">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                <h2 class="text-lg font-bold">スタッフ一覧</h2>
+                <button @click="addStaff()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">＋ 追加</button>
             </div>
-            <div class="bg-white rounded-2xl shadow-sm border border-amber-100 overflow-hidden">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="bg-amber-50/60 text-stone-600 text-xs uppercase tracking-wider">
+                        <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider">
                             <th class="p-4">名前</th>
                             <th class="p-4 hidden sm:table-cell">担当業務</th>
                             <th class="p-4 text-center">早出対応</th>
                             <th class="p-4 text-center">操作</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-amber-100/60 text-sm">
+                    <tbody class="divide-y divide-slate-200 text-sm">
                         <template x-for="(staff, index) in staffs" :key="staff.id">
-                            <tr class="hover:bg-amber-50/30 transition-colors">
-                                <td class="p-4"><input type="text" x-model="staff.name" class="border border-stone-200 rounded-lg px-3 py-1.5 w-full max-w-xs focus:ring-2 focus:ring-amber-400 outline-none" @change="renderChart()"></td>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-4"><input type="text" x-model="staff.name" class="border rounded px-2 py-1 w-full max-w-xs focus:ring-2 focus:ring-indigo-500 outline-none" @change="renderChart()"></td>
                                 <td class="p-4 hidden sm:table-cell">
-                                    <select x-model="staff.role" class="border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                                    <select x-model="staff.role" class="border rounded px-2 py-1 bg-white">
                                         <option value="乳児担当">乳児担当</option>
                                         <option value="幼児担当">幼児担当</option>
                                         <option value="フリー">フリー</option>
                                         <option value="主任">主任</option>
                                     </select>
                                 </td>
-                                <td class="p-4 text-center"><input type="checkbox" x-model="staff.canEarly" @change="Sound.click()" class="w-5 h-5 text-amber-500 rounded cursor-pointer"></td>
-                                <td class="p-4 text-center"><button @click="removeStaff(index); Sound.click()" class="text-rose-400 hover:text-rose-600 text-xs font-bold hover-dynamic bg-rose-50 px-3 py-1 rounded-full">削除</button></td>
+                                <td class="p-4 text-center"><input type="checkbox" x-model="staff.canEarly" class="w-4 h-4 text-indigo-600 rounded"></td>
+                                <td class="p-4 text-center"><button @click="removeStaff(index)" class="text-red-500 hover:text-red-700 text-xs font-medium">削除</button></td>
                             </tr>
                         </template>
                     </tbody>
@@ -153,31 +114,31 @@
         </div>
 
         <!-- TAB 2: Settings & Offs -->
-        <div x-cloak x-show="tab === 'settings'" class="space-y-6 no-print">
+        <div x-show="tab === 'settings'" class="space-y-6 no-print">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- 期間指定 -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
-                    <label class="block text-sm font-bold text-stone-700 mb-2">シフト対象期間（連休対応） 📅</label>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">シフト対象期間（連休対応）</label>
                     <div class="flex items-center gap-2">
-                        <input type="date" x-model="startDate" class="border border-stone-200 rounded-xl px-3 py-2 w-full bg-stone-50" @change="updatePeriodDays(); Sound.click()">
-                        <span class="font-bold text-stone-400">〜</span>
-                        <input type="date" x-model="endDate" class="border border-stone-200 rounded-xl px-3 py-2 w-full bg-stone-50" @change="updatePeriodDays(); Sound.click()">
+                        <input type="date" x-model="startDate" class="border rounded-lg px-3 py-2 w-full bg-slate-50" @change="updatePeriodDays()">
+                        <span class="font-bold text-slate-500">〜</span>
+                        <input type="date" x-model="endDate" class="border rounded-lg px-3 py-2 w-full bg-slate-50" @change="updatePeriodDays()">
                     </div>
-                    <p class="text-xs text-stone-400 mt-2">※期間を変更するとカレンダーが自動生成されます</p>
+                    <p class="text-xs text-slate-500 mt-2">※期間を変更するとカレンダーが自動生成されます</p>
                 </div>
 
                 <!-- 早出の種類 -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-sm font-bold text-stone-700">早出の種類と所要時間（分） ⏰</h2>
-                        <button @click="addShiftType(); Sound.click()" class="text-xs bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-200 font-bold hover-dynamic">＋ 種類を追加</button>
+                        <h2 class="text-sm font-bold">早出の種類と所要時間（分）</h2>
+                        <button @click="addShiftType()" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 font-bold">＋ 種類を追加</button>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-40 overflow-y-auto pr-2">
                         <template x-for="(type, index) in shiftTypes" :key="type.id">
-                            <div class="flex items-center gap-1 border border-amber-200/60 p-1.5 rounded-xl bg-amber-50/40">
-                                <input type="text" x-model="type.name" class="w-16 text-xs border border-stone-200 rounded px-1 py-1 text-center font-bold">
-                                <input type="number" x-model.number="type.time" class="w-12 text-xs border border-stone-200 rounded px-1 py-1 text-center" min="10" step="10">
-                                <button @click="removeShiftType(index); Sound.click()" class="text-stone-400 hover:text-rose-500 ml-1 font-bold">×</button>
+                            <div class="flex items-center gap-1 border border-slate-200 p-1.5 rounded bg-slate-50">
+                                <input type="text" x-model="type.name" class="w-16 text-xs border rounded px-1 py-1 text-center font-bold">
+                                <input type="number" x-model.number="type.time" class="w-12 text-xs border rounded px-1 py-1 text-center" min="10" step="10">
+                                <button @click="removeShiftType(index)" class="text-slate-400 hover:text-red-500 ml-1">×</button>
                             </div>
                         </template>
                     </div>
@@ -185,32 +146,32 @@
             </div>
 
             <!-- カレンダー（希望休） -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100 overflow-x-auto">
-                <div class="flex justify-between items-end mb-3">
-                    <h2 class="text-lg font-bold text-stone-700">希望休マトリクス 🏖</h2>
-                    <span class="text-xs text-rose-500 font-bold bg-rose-50 px-2.5 py-1 rounded-full">※クリックで「休🐣」</span>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                <div class="flex justify-between items-end mb-2">
+                    <h2 class="text-lg font-bold">希望休マトリクス</h2>
+                    <span class="text-xs text-red-500 font-bold">※クリックで「休」</span>
                 </div>
                 <table class="w-full text-center text-xs border-collapse">
                     <thead>
-                        <tr class="bg-amber-50/60 text-stone-600">
-                            <th class="p-2 text-left sticky left-0 bg-amber-50/90 z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]">スタッフ</th>
+                        <tr class="bg-slate-100 text-slate-600">
+                            <!-- 列幅を広げる（名前が潰れないように） -->
+                            <th class="p-2 text-left sticky left-0 bg-slate-100 z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]">スタッフ</th>
                             <template x-for="day in periodDays" :key="day.key">
-                                <th class="p-1 border-r min-w-[35px]" :class="{'text-rose-500': day.isSun, 'text-sky-600': day.isSat}">
+                                <th class="p-1 border-r min-w-[35px]" :class="{'text-red-500': day.isSun, 'text-blue-500': day.isSat}">
                                     <div x-text="day.displayDate"></div>
                                     <div x-text="day.weekday" class="text-[10px]"></div>
                                 </th>
                             </template>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-amber-100/60">
+                    <tbody class="divide-y divide-slate-200">
                         <template x-for="staff in staffs" :key="staff.id">
-                            <tr class="hover:bg-amber-50/30 transition-colors">
+                            <tr class="hover:bg-slate-50">
+                                <!-- 列幅を広げる -->
                                 <td class="p-2 text-left font-medium sticky left-0 bg-white z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]" x-text="staff.name"></td>
                                 <template x-for="day in periodDays" :key="day.key">
-                                    <td class="p-1 border-r cursor-pointer transition-colors hover-dynamic select-none" 
-                                        @click="toggleOff(staff.id, day.key); Sound.click(); triggerAnim(staff.id, day.key)" 
-                                        :class="isOff(staff.id, day.key) ? 'bg-rose-50 text-rose-600 font-bold shadow-inner' : 'hover:bg-amber-100/50 bg-white'">
-                                        <div :class="{'animate-pop': isAnim(staff.id, day.key)}" x-text="isOff(staff.id, day.key) ? '休🐣' : ''" class="text-sm"></div>
+                                    <td class="p-1 border-r cursor-pointer" @click="toggleOff(staff.id, day.key)" :class="isOff(staff.id, day.key) ? 'bg-red-100 text-red-700 font-bold' : 'hover:bg-slate-100'">
+                                        <span x-text="isOff(staff.id, day.key) ? '休' : ''"></span>
                                     </td>
                                 </template>
                             </tr>
@@ -221,73 +182,65 @@
         </div>
 
         <!-- TAB 3: Generate & Print Result -->
-        <div x-cloak x-show="tab === 'generate'" class="space-y-6">
+        <div x-show="tab === 'generate'" class="space-y-6">
             <div class="print-only text-center mb-4">
                 <h1 class="text-2xl font-bold" x-text="`${startDate.replace(/-/g, '/')} 〜 ${endDate.replace(/-/g, '/')} 早出シフト表`"></h1>
             </div>
 
-            <!-- ヌケモレ警告バナー -->
-            <div x-cloak x-show="!isGenerating && getMissingShiftsReport().length > 0" class="bg-rose-50 border-l-4 border-rose-400 p-4 rounded-2xl shadow-sm no-print mb-6">
+            <!-- ★ ヌケモレ警告バナー -->
+            <div x-cloak x-show="getMissingShiftsReport().length > 0" class="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm no-print mb-6">
                 <div class="flex items-center">
-                    <span class="text-xl mr-2 animate-bounce">⚠️</span>
-                    <h3 class="text-rose-800 font-bold">手動調整アラート：割り当てられていない早出枠があります！</h3>
+                    <svg class="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <h3 class="text-red-800 font-bold">手動調整アラート：割り当てられていない早出枠があります！</h3>
                 </div>
-                <ul class="mt-2 ml-8 text-sm text-rose-700 list-disc">
+                <ul class="mt-2 ml-8 text-sm text-red-700 list-disc">
                     <template x-for="report in getMissingShiftsReport()" :key="report.date">
                         <li>
                             <span x-text="report.displayDate" class="font-bold"></span> : 
-                            <span class="font-medium bg-rose-100 px-1.5 py-0.5 rounded" x-text="report.missing.join(', ')"></span> が未割り当てです。
+                            <span class="font-medium bg-red-100 px-1 rounded" x-text="report.missing.join(', ')"></span> が未割り当てです。
                         </li>
                     </template>
                 </ul>
             </div>
 
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100 flex flex-wrap justify-between items-center gap-4 no-print">
-                <h2 class="text-lg font-bold text-stone-700">シフト自動生成 ＆ 印刷</h2>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4 no-print">
+                <h2 class="text-lg font-bold">シフト自動生成 ＆ 印刷</h2>
                 <div class="flex gap-3">
-                    <!-- ガチャ演出付き自動生成ボタン -->
-                    <button @click="generateShiftWithSimulation()" :disabled="isGenerating" class="bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-md hover-dynamic flex items-center gap-2 disabled:opacity-50">
-                        <span x-show="!isGenerating">✨ 最適化して自動生成（ガチャ）</span>
-                        <span x-show="isGenerating">🔄 AIが計算中...</span>
-                    </button>
-                    <button onclick="window.print()" class="bg-stone-700 hover:bg-stone-800 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-md flex items-center gap-2 hover-dynamic">
-                        🖨 印刷する
+                    <button @click="generateShiftWithSimulation()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition shadow-sm">最適化して自動生成</button>
+                    <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                        印刷する
                     </button>
                 </div>
             </div>
 
-            <div class="bg-white p-2 sm:p-6 rounded-2xl shadow-sm border border-amber-100 overflow-x-auto relative">
-                <!-- 生成中のオーバーレイ -->
-                <div x-show="isGenerating" class="absolute inset-0 bg-white/50 z-20 flex items-center justify-center backdrop-blur-[1px]"></div>
-
+            <div class="bg-white p-2 sm:p-6 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
                 <table class="w-full text-center text-xs border-collapse">
                     <thead>
-                        <tr class="bg-amber-50/60 text-stone-600">
-                            <th class="p-2 text-left sticky left-0 bg-amber-50/90 z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]">スタッフ</th>
+                        <tr class="bg-slate-100 text-slate-600">
+                            <th class="p-2 text-left sticky left-0 bg-slate-100 z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]">スタッフ</th>
                             <template x-for="day in periodDays" :key="day.key">
-                                <th class="p-1 border-r min-w-[40px] relative" :class="{'text-rose-500': day.isSun, 'text-sky-600': day.isSat}">
+                                <!-- ★ ヘッダーに相対配置(relative)を追加し、警告アイコンを配置 -->
+                                <th class="p-1 border-r min-w-[40px] relative" :class="{'text-red-500': day.isSun, 'text-blue-500': day.isSat}">
                                     <div x-text="day.displayDate" class="font-bold"></div>
                                     <div x-text="day.weekday" class="text-[9px]"></div>
-                                    <div x-cloak x-show="!isGenerating && isDayMissingShifts(day.key)" class="absolute top-0 right-0 text-rose-500 text-[10px] animate-pulse no-print" title="早出が不足">⚠️</div>
+                                    <!-- ★ 警告アイコン (早出が足りていない日だけ点滅表示) -->
+                                    <div x-cloak x-show="isDayMissingShifts(day.key)" class="absolute top-0 right-0 text-red-500 text-[10px] animate-pulse no-print" title="早出が不足">⚠️</div>
                                 </th>
                             </template>
-                            <th class="p-2 bg-amber-100/80 sticky right-0 z-10 text-stone-700">時間合計</th>
+                            <th class="p-2 bg-slate-200 sticky right-0 z-10">時間合計</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-amber-100/60">
+                    <tbody class="divide-y divide-slate-200">
                         <template x-for="staff in staffs" :key="staff.id">
-                            <tr class="hover:bg-amber-50/30 transition-colors">
+                            <tr class="hover:bg-slate-50">
                                 <td class="p-2 text-left font-medium sticky left-0 bg-white z-10 border-r min-w-[120px] whitespace-nowrap shadow-[1px_0_0_#e2e8f0]" x-text="staff.name"></td>
                                 <template x-for="day in periodDays" :key="day.key">
-                                    <td class="p-0 border-r" :class="{'bg-rose-50/30': day.isSun, 'bg-sky-50/30': day.isSat}">
-                                        <!-- ルーレット中の残像表示 -->
-                                        <div x-show="isGenerating" class="text-xs py-1 w-full text-center font-bold" :class="{'is-roulette': shifts[staff.id][day.key] !== '-' && shifts[staff.id][day.key] !== '休'}" x-text="shifts[staff.id][day.key]"></div>
-
-                                        <select x-show="!isGenerating" x-model="shifts[staff.id][day.key]" @change="renderChart(); Sound.click(); checkCompleteManual()" class="shift-select text-xs py-1 rounded-md border-0 bg-transparent text-center w-full font-semibold cursor-pointer transition-all hover:bg-amber-100/50 hover-dynamic"
+                                    <td class="p-0 border-r" :class="{'bg-red-50/30': day.isSun, 'bg-blue-50/30': day.isSat}">
+                                        <select x-model="shifts[staff.id][day.key]" @change="renderChart()" class="shift-select text-xs py-1 rounded border-0 bg-transparent text-center w-full font-semibold"
                                             :class="{
-                                                'bg-rose-50 text-rose-600 font-bold': shifts[staff.id][day.key] === '休',
-                                                'text-stone-300': shifts[staff.id][day.key] === '-',
-                                                'bg-amber-100 text-amber-900 font-bold shadow-sm': shifts[staff.id][day.key] !== '-' && shifts[staff.id][day.key] !== '休'
+                                                'bg-red-50 text-red-600': shifts[staff.id][day.key] === '休',
+                                                'text-slate-300': shifts[staff.id][day.key] === '-',
+                                                'bg-indigo-100 text-indigo-800': shifts[staff.id][day.key] !== '-' && shifts[staff.id][day.key] !== '休'
                                             }">
                                             <option value="-">-</option>
                                             <option value="休">休</option>
@@ -297,7 +250,7 @@
                                         </select>
                                     </td>
                                 </template>
-                                <td class="p-2 bg-amber-50/50 font-bold sticky right-0 z-10 text-[10px] whitespace-nowrap text-amber-800" x-text="calcTotalTime(staff.id) + '分'"></td>
+                                <td class="p-2 bg-slate-100 font-bold sticky right-0 z-10 text-[10px] whitespace-nowrap text-indigo-700" x-text="calcTotalTime(staff.id) + '分'"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -306,28 +259,28 @@
         </div>
 
         <!-- TAB 4: Charts -->
-        <div x-cloak x-show="tab === 'charts'" class="space-y-6 no-print">
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
-                <h2 class="text-lg font-bold text-stone-700 mb-2">スタッフ別 負荷グラフ（合計時間） 📊</h2>
+        <div x-show="tab === 'charts'" class="space-y-6 no-print">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold mb-2">スタッフ別 負荷グラフ（合計時間）</h2>
                 <div id="shiftChart" class="min-h-[500px]"></div>
             </div>
         </div>
 
         <!-- TAB 5: Data Management -->
-        <div x-cloak x-show="tab === 'data'" class="space-y-6 no-print">
+        <div x-show="tab === 'data'" class="space-y-6 no-print">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
-                    <h2 class="text-lg font-bold text-stone-700 mb-2">💾 ブラウザにセーブ（一時保存）</h2>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold mb-2">💾 ブラウザにセーブ（一時保存）</h2>
                     <div class="flex gap-3">
-                        <button @click="saveToBrowser(); Sound.success()" class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm hover-dynamic">セーブする</button>
-                        <button @click="loadFromBrowser(); Sound.click()" class="border-2 border-amber-400 text-amber-600 hover:bg-amber-50 px-6 py-3 rounded-xl text-sm font-bold hover-dynamic">ロードする</button>
+                        <button @click="saveToBrowser()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">セーブする</button>
+                        <button @click="loadFromBrowser()" class="border border-indigo-600 text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg text-sm font-medium transition">ロードする</button>
                     </div>
                 </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-amber-100">
-                    <h2 class="text-lg font-bold text-stone-700 mb-2">📄 ファイル保存（バックアップ）</h2>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-bold mb-2">📄 ファイル保存（バックアップ）</h2>
                     <div class="flex flex-col gap-3">
-                        <button @click="exportDataFile(); Sound.click()" class="bg-stone-700 hover:bg-stone-800 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm w-max hover-dynamic">バックアップをダウンロード</button>
-                        <label class="border-2 border-stone-300 hover:bg-stone-50 text-stone-700 px-6 py-3 rounded-xl text-sm font-bold cursor-pointer w-max hover-dynamic">
+                        <button @click="exportDataFile()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition w-max">バックアップをダウンロード</button>
+                        <label class="border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer w-max">
                             ファイルから読み込む
                             <input type="file" accept=".json" class="hidden" @change="importDataFile($event)">
                         </label>
@@ -338,72 +291,6 @@
     </main>
 
     <script>
-        // Web Audio API サウンド合成エンジン（音分け・制限解除対応）
-        const Sound = {
-            ctx: null,
-            init() {
-                if (!this.ctx) {
-                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                if (this.ctx.state === 'suspended') {
-                    this.ctx.resume();
-                }
-            },
-            click() {
-                try {
-                    this.init();
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.05);
-                    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
-                    osc.connect(gain); gain.connect(this.ctx.destination);
-                    osc.start(); osc.stop(this.ctx.currentTime + 0.05);
-                } catch(e){}
-            },
-            success() {
-                try {
-                    this.init();
-                    const freqs = [523.25, 659.25, 783.99, 1046.50]; 
-                    freqs.forEach((freq, index) => {
-                        setTimeout(() => {
-                            const osc = this.ctx.createOscillator();
-                            const gain = this.ctx.createGain();
-                            osc.type = 'triangle';
-                            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-                            gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-                            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
-                            osc.connect(gain); gain.connect(this.ctx.destination);
-                            osc.start(); osc.stop(this.ctx.currentTime + 0.15);
-                        }, index * 80);
-                    });
-                } catch(e){}
-            },
-            error() {
-                try {
-                    this.init();
-                    const freqs = [150, 130]; 
-                    freqs.forEach((freq, index) => {
-                        setTimeout(() => {
-                            const osc = this.ctx.createOscillator();
-                            const gain = this.ctx.createGain();
-                            osc.type = 'sawtooth';
-                            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-                            gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-                            gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
-                            osc.connect(gain); gain.connect(this.ctx.destination);
-                            osc.start(); osc.stop(this.ctx.currentTime + 0.15);
-                        }, index * 120);
-                    });
-                } catch(e){}
-            }
-        };
-
-        // 初回クリックでブラウザの音声制限を自動解除
-        document.addEventListener('click', () => { Sound.init(); }, { once: true });
-
         function shiftApp() {
             return {
                 tab: 'generate',
@@ -424,32 +311,9 @@
                 shifts: {},      
                 chart: null,     
 
-                // アニメーション＆エンタメ状態
-                animStates: {},
-                isGenerating: false,
-                showComplete: false,
-                messages: ['今日も一日お疲れ様です！☕️', '無理せず休憩も挟んでね🌸', 'いつも子どもたちの笑顔をありがとう🐥', '肩の力を抜いて、リラックス🌿'],
-                todayMessage: '',
-
                 init() {
-                    try {
-                        if (this.staffs && this.staffs[11]) {
-                            this.staffs[11].canEarly = false;
-                        }
-                        this.updatePeriodDays();
-                        this.todayMessage = this.messages[Math.floor(Math.random() * this.messages.length)];
-                    } catch(e) {
-                        console.error('Init error:', e);
-                    }
-                },
-
-                triggerAnim(staffId, dayKey) {
-                    const k = `${staffId}_${dayKey}`;
-                    this.animStates[k] = true;
-                    setTimeout(() => { this.animStates[k] = false; }, 400); 
-                },
-                isAnim(staffId, dayKey) {
-                    return !!this.animStates[`${staffId}_${dayKey}`];
+                    this.staffs[11].canEarly = false;
+                    this.updatePeriodDays();
                 },
 
                 updatePeriodDays() {
@@ -533,6 +397,9 @@
                     return total;
                 },
 
+                // ==========================================
+                // ★ ヌケモレ判定関数（バナー表示用）
+                // ==========================================
                 getMissingShiftsReport() {
                     let report = [];
                     if (!this.shiftTypes || this.shiftTypes.length === 0) return report;
@@ -560,6 +427,9 @@
                     return report;
                 },
 
+                // ==========================================
+                // ★ 特定の日付のヌケモレ判定（ヘッダーの⚠️アイコン用）
+                // ==========================================
                 isDayMissingShifts(dayKey) {
                     if (!this.shiftTypes || this.shiftTypes.length === 0) return false;
                     let assignedTypes = new Set();
@@ -573,17 +443,7 @@
                     return requiredTypes.some(t => !assignedTypes.has(t));
                 },
 
-                checkCompleteManual() {
-                    if (this.shiftTypes.length > 0 && this.getMissingShiftsReport().length === 0) {
-                        Sound.success();
-                        this.showComplete = true;
-                        setTimeout(() => { this.showComplete = false; }, 3000);
-                    }
-                },
-
-                // ガチャ演出つき自動生成ロジック
                 generateShiftWithSimulation() {
-                    if(this.isGenerating) return;
                     const SIMULATION_COUNT = 100; 
                     let bestShifts = null;
                     let bestScore = Infinity;
@@ -592,7 +452,6 @@
                     const requiredCount = this.shiftTypes.length;
 
                     if(requiredCount === 0) {
-                        Sound.error();
                         alert("早出の種類が設定されていません。");
                         return;
                     }
@@ -622,6 +481,7 @@
                                 return; 
                             }
 
+                            // シャッフルして割り当て
                             let typesToAssign = [...this.shiftTypes].sort(() => Math.random() - 0.5);
                             let availableStaff = [...candidates];
                             
@@ -649,47 +509,10 @@
                         }
                     }
 
-                    if (shortageDays.length > 0) {
-                        Sound.error();
-                        alert(`🚨【警告】${shortageDays.join(', ')} は人が足りません！`);
-                    } else if (bestShifts) {
-                        this.isGenerating = true;
-                        Sound.click();
-
-                        let count = 0;
-                        let rouletteInterval = setInterval(() => {
-                            let dummyShifts = JSON.parse(JSON.stringify(this.shifts));
-                            this.periodDays.forEach(day => {
-                                this.staffs.forEach(s => {
-                                    if(!this.isOff(s.id, day.key)) {
-                                        let r = Math.random();
-                                        let dummyVal = '-';
-                                        if (r > 0.3) {
-                                            let randomType = this.shiftTypes[Math.floor(Math.random() * this.shiftTypes.length)];
-                                            if(randomType) dummyVal = randomType.name;
-                                        }
-                                        dummyShifts[s.id][day.key] = dummyVal;
-                                    }
-                                });
-                            });
-                            this.shifts = dummyShifts;
-                            Sound.click();
-                            
-                            count++;
-                            if (count > 10) {
-                                clearInterval(rouletteInterval);
-                                this.shifts = bestShifts;
-                                this.isGenerating = false;
-                                Sound.success();
-                                
-                                if(this.getMissingShiftsReport().length === 0) {
-                                    this.showComplete = true;
-                                    setTimeout(() => { this.showComplete = false; }, 3500);
-                                }
-                                setTimeout(() => { this.renderChart() }, 50);
-                            }
-                        }, 80);
-                    }
+                    if (shortageDays.length > 0) alert(`🚨【警告】${shortageDays.join(', ')} は人が足りません！`);
+                    else if (bestShifts) this.shifts = bestShifts;
+                    
+                    setTimeout(() => { this.renderChart() }, 50);
                 },
 
                 countSpecificEarly(staffId, typeName) {
@@ -698,10 +521,7 @@
                 },
 
                 renderChart() {
-                    if (this.tab !== 'charts') return; 
-                    const chartEl = document.querySelector("#shiftChart");
-                    if (!chartEl) return;
-
+                    if (this.tab !== 'charts' && !this.chart) return; 
                     const sortedStaffs = [...this.staffs].sort((a, b) => this.calcTotalTime(b.id) - this.calcTotalTime(a.id));
                     
                     const seriesData = this.shiftTypes.map(typeObj => ({
@@ -714,15 +534,15 @@
                         chart: { type: 'bar', height: 500, stacked: true, fontFamily: 'inherit', toolbar: { show: false } },
                         plotOptions: { bar: { horizontal: true } },
                         stroke: { width: 1, colors: ['#fff'] },
-                        xaxis: { categories: sortedStaffs.map(s => s.name), labels: { style: { colors: '#78716c' }, formatter: (val) => val + "分" } },
-                        yaxis: { labels: { style: { colors: '#78716c' } } },
+                        xaxis: { categories: sortedStaffs.map(s => s.name), labels: { style: { colors: '#64748b' }, formatter: (val) => val + "分" } },
+                        yaxis: { labels: { style: { colors: '#64748b' } } },
                         fill: { opacity: 1 },
                         legend: { position: 'top', horizontalAlign: 'left', offsetX: 40 }
                     };
                     if (this.chart) this.chart.updateOptions(options);
                     else {
-                        this.chart = new ApexCharts(chartEl, options); 
-                        this.chart.render(); 
+                        const chartEl = document.querySelector("#shiftChart");
+                        if (chartEl) { this.chart = new ApexCharts(chartEl, options); this.chart.render(); }
                     }
                 },
 
@@ -744,18 +564,13 @@
                 },
                 saveToBrowser() {
                     localStorage.setItem('hoikuenShiftBackup_v2', JSON.stringify(this.getDumpData()));
-                    Sound.success();
                     alert('ブラウザにセーブしました。');
                 },
                 loadFromBrowser() {
                     const json = localStorage.getItem('hoikuenShiftBackup_v2');
-                    if(!json) {
-                        Sound.error();
-                        return alert('セーブデータが見つかりません。');
-                    }
+                    if(!json) return alert('セーブデータが見つかりません。');
                     if(confirm('ロードしますか？（現在の入力は消えます）')) {
                         this.applyDumpData(JSON.parse(json));
-                        Sound.success();
                         alert('復元完了！');
                     }
                 },
@@ -765,7 +580,6 @@
                     link.href = URL.createObjectURL(blob);
                     link.download = `shift_backup_${this.startDate}.json`;
                     link.click();
-                    Sound.success();
                 },
                 importDataFile(e) {
                     const file = e.target.files[0];
@@ -775,13 +589,9 @@
                         try {
                             if(confirm('読み込みますか？（上書きされます）')) {
                                 this.applyDumpData(JSON.parse(event.target.result));
-                                Sound.success();
                                 alert('読み込み完了！');
                             }
-                        } catch(err) { 
-                            Sound.error();
-                            alert('ファイルエラーです。'); 
-                        }
+                        } catch(err) { alert('ファイルエラーです。'); }
                         e.target.value = ''; 
                     };
                     reader.readAsText(file);
