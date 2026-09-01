@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>シフト作成アプリ V7 (商用・完全統合版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .sticky-col { position: sticky; left: 0; background-color: #f8fafc; z-index: 10; box-shadow: 2px 0 4px -2px rgba(0,0,0,0.1); }
+        td, th { -webkit-tap-highlight-color: transparent; }
+        
+        /* 🖨️ 印刷・PDF化用の最適化スタイル */
+        @media print {
+            .no-print { display: none !important; }
+            .sticky-col { position: static !important; box-shadow: none !important; }
+            main { box-shadow: none !important; overflow: visible !important; padding: 0 !important; }
+            body { background-color: white; }
+            #app { height: auto !important; padding: 0 !important; }
+            table { border-collapse: collapse; width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans">
+    <div id="app" class="max-w-7xl mx-auto p-2 sm:p-4 flex flex-col h-screen">
+        
+        <header class="mb-3 no-print">
+            <h1 class="text-xl font-bold text-slate-700 mb-2 flex justify-between items-center">
+                <span>📅 シフト作成アプリ (V7 商用レベル版)</span>
+                <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full border border-emerald-200" v-if="saveMessage">{{ saveMessage }}</span>
+            </h1>
+            <div class="flex overflow-x-auto space-x-1 border-b-2 border-slate-200 pb-1 text-sm font-bold">
+                <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+                    :class="['px-3 py-1.5 rounded-t-lg whitespace-nowrap transition', currentTab === tab.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-200']">
+                    {{ tab.name }}
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto bg-white rounded-lg shadow p-3 sm:p-4 relative">
+            
+            <!-- ⚙️ 設定タブ -->
+            <div v-show="currentTab === 'settings'" class="space-y-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-slate-50 p-3 rounded border">
+                        <h2 class="text-base font-bold border-b pb-1 mb-2 text-indigo-700">👥 スタッフ登録 ＆ 詳細条件</h2>
+                        <div class="flex gap-2 mb-3">
+                            <input v-model="newStaffName" @keyup.enter="addStaff" placeholder="氏名を追加" class="border rounded px-2 py-1 text-sm flex-1">
+                            <button @click="addStaff" class="bg-indigo-600 text-white px-3 py-1 rounded text-sm font-bold">追加</button>
+                        </div>
+                        
+                        <!-- スタッフごとの詳細設定 (時給、固定休、不可シフト) -->
+                        <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
+                            <div v-for="staff in state.staffList" :key="staff.id" class="bg-white p-2 border rounded shadow-sm text-xs">
+                                <div class="font-bold text-sm text-slate-700 flex justify-between mb-2">
+                                    {{ staff.name }}
+                                    <button @click="removeStaff(staff.id)" class="text-red-500 hover:text-red-700 text-xs bg-red-50 px-2 rounded">削除</button>
+                                </div>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="font-bold text-slate-600">時給:</span>
+                                    <input type="number" v-model.number="staff.hourlyWage" class="border rounded px-1.5 py-0.5 w-20 bg-slate-50" placeholder="1000"> 円
+                                </div>
+                                <div class="mb-2">
+                                    <span class="font-bold text-slate-600 block mb-1">必ず休む曜日 (固定休):</span>
+                                    <div class="flex gap-2 flex-wrap">
+                                        <label v-for="day in ['日','月','火','水','木','金','土']" :key="day" class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" :value="day" v-model="staff.fixedDaysOff"> {{ day }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="font-bold text-slate-600 block mb-1">対応できないシフト:</span>
+                                    <div class="flex gap-2 flex-wrap">
+                                        <label v-for="type in state.shiftTypes.filter(t => t.code && t.code !== '休')" :key="type.code" class="flex items-center gap-1 cursor-pointer">
+                                            <input type="checkbox" :value="type.code" v-model="staff.unavailableShifts"> {{ type.name }}
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="bg-blue-50 p-3 rounded border border-blue-100">
+                            <h2 class="text-base font-bold border-b pb-1 mb-2 text-blue-800">🔄 規則性（ベースパターン）の設定</h2>
+                            <p class="text-[11px] text-blue-700 mb-2">自動作成のベースとなるローテーションを指定します。</p>
+                            <div class="space-y-2">
+                                <input v-model="state.baseRotationStr" placeholder="例: 出,遅,休,出,出,休" class="border rounded px-3 py-2 text-sm w-full font-bold shadow-sm">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-700">ズレの方向:</span>
+                                    <select v-model="state.cascadeDirection" class="border rounded px-2 py-1 text-sm bg-white font-bold text-slate-700 shadow-sm cursor-pointer">
+                                        <option value="right-down">↘️ 右下へ1マスずつズレる（カスケード）</option>
+                                        <option value="left-down">↙️ 左下へ1マスずつズレる</option>
+                                        <option value="none">⬇️ ズラさない（全員同じ）</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 💾 JSONバックアップ・復元 -->
+                        <div class="bg-emerald-50 p-3 rounded border border-emerald-100">
+                            <h2 class="text-base font-bold border-b pb-1 mb-2 text-emerald-800">💾 データのバックアップと復元</h2>
+                            <p class="text-[11px] text-emerald-700 mb-2">ブラウザのデータ消去対策として、設定やシフトをファイルに保存できます。</p>
+                            <div class="flex flex-col gap-3">
+                                <button @click="exportJSON" class="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-bold shadow hover:bg-emerald-700 text-center">
+                                    📤 JSONバックアップをダウンロード
+                                </button>
+                                <div class="bg-white border rounded p-2 text-sm">
+                                    <span class="font-bold text-slate-700 block mb-1">📥 復元する (ファイル選択):</span>
+                                    <input type="file" accept=".json" @change="importJSON" class="text-xs w-full">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-base font-bold border-b pb-1 mb-2 text-indigo-700">⏰ 勤務・当番のカスタム設定</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                        <div v-for="(type, index) in state.shiftTypes" :key="index" :class="['border p-2.5 rounded shadow-sm flex flex-col transition', type.colorClass]">
+                            <div class="flex justify-between items-center border-b border-black/10 pb-1 mb-1.5">
+                                <span class="font-bold text-sm">{{ type.code || '空白' }} <span class="text-xs font-normal">({{ type.name }})</span></span>
+                                <div class="flex gap-1 items-center">
+                                    <span v-if="type.isEarly" class="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">均等対象</span>
+                                    <button v-if="index > 2" @click="removeShiftType(index)" class="text-red-500 hover:text-red-800 text-[10px] font-bold bg-white/50 px-1 rounded">削除</button>
+                                </div>
+                            </div>
+                            <div class="text-[11px] space-y-1">
+                                <div class="flex justify-between"><span>出勤:</span> <b>{{ type.startTime || '-' }}</b></div>
+                                <div class="flex justify-between"><span>時間:</span> <b>{{ type.hours }} H</b></div>
+                                <label v-if="type.code && type.code !== '休'" class="flex items-center gap-1 font-bold mt-1 cursor-pointer">
+                                    <input type="checkbox" v-model="type.isRequired" class="w-3 h-3"> 必須(抜け警告)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-lg shadow-sm text-sm">
+                        <h3 class="font-bold text-indigo-900 mb-2">＋ 新しい勤務・当番を追加</h3>
+                        <div class="flex flex-wrap gap-3 items-end">
+                            <label class="text-xs">記号 <input v-model="newShift.code" placeholder="例: 当" class="border rounded p-1 w-12 mt-1 block"></label>
+                            <label class="text-xs">名称 <input v-model="newShift.name" placeholder="例: 当番" class="border rounded p-1 w-20 mt-1 block"></label>
+                            <label class="text-xs">出勤 <input type="time" v-model="newShift.startTime" class="border rounded p-1 w-24 mt-1 block"></label>
+                            <label class="text-xs">時間 <input type="number" v-model.number="newShift.hours" class="border rounded p-1 w-12 mt-1 block"></label>
+                            
+                            <div class="flex flex-col gap-1 pb-1">
+                                <label class="text-[10px] font-bold flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" v-model="newShift.isRequired"> 毎日必須(警告)
+                                </label>
+                                <label class="text-[10px] font-bold flex items-center gap-1 cursor-pointer" title="自動作成時に出勤者へ均等に割り振られます">
+                                    <input type="checkbox" v-model="newShift.isEarly"> 均等配置(早/遅等)
+                                </label>
+                            </div>
+                            
+                            <button @click="addShiftType" class="bg-indigo-600 text-white px-4 py-1.5 rounded font-bold hover:bg-indigo-700 h-8 ml-auto">登録</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📅 シフト表タブ -->
+            <div v-show="currentTab === 'shift'" class="flex flex-col h-full">
+                <div class="flex justify-between items-center mb-2 no-print">
+                    <input type="month" v-model="state.targetMonth" @change="generateCalendar" class="border p-1 rounded font-bold text-base">
+                    <div class="space-x-2 flex">
+                        <button @click="printShift" class="bg-slate-800 text-white px-3 py-1.5 rounded shadow text-sm hover:bg-slate-900 font-bold transition">
+                            🖨️ 印刷/PDF化
+                        </button>
+                        <button @click="autoFillShift" class="bg-blue-600 text-white px-3 py-1.5 rounded shadow text-sm hover:bg-blue-700 font-bold transition flex items-center gap-1" title="希望休や条件を考慮して自動作成します">
+                            ✨ スマート自動作成
+                        </button>
+                        <button @click="clearShift" class="bg-slate-100 text-slate-700 border px-3 py-1 rounded shadow text-sm hover:bg-slate-200">🧹 クリア</button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto border rounded flex-1 shadow-inner bg-slate-50 relative">
+                    <table class="w-full text-center border-collapse text-xs min-w-max">
+                        <thead>
+                            <tr class="bg-slate-200 sticky top-0 z-20 shadow-sm">
+                                <th class="sticky-col p-2 min-w-[100px] border-b border-r bg-slate-200">
+                                    日付 / 曜日
+                                </th>
+                                <th v-for="d in days" :key="d.dateString" :class="['p-1 min-w-[55px] border-b border-r align-top', getDayColor(d.dayOfWeek)]">
+                                    <div class="flex flex-col items-center">
+                                        <span class="text-[10px] text-slate-500">{{ d.dayOfWeek }}</span>
+                                        <span class="font-bold text-sm">{{ d.day }}</span>
+                                        <div v-if="getMissingShifts(d.dateString).length > 0" 
+                                             class="text-[9px] bg-red-100 text-red-600 border border-red-300 rounded px-0.5 mt-1 font-bold cursor-help no-print"
+                                             :title="'不足: ' + getMissingShifts(d.dateString).join(', ')">
+                                            ⚠️ 欠
+                                        </div>
+                                        <div v-else class="text-[9px] text-emerald-500 mt-1 font-bold no-print">✓</div>
+                                    </div>
+                                </th>
+                            </tr>
+                            <tr class="bg-amber-50 sticky top-[48px] z-20 border-b-2 border-amber-300">
+                                <td class="sticky-col p-1 border-r font-bold text-amber-900 bg-amber-100 text-[10px]">🌅 均等対象シフト</td>
+                                <td v-for="d in days" :key="d.dateString" class="border-r p-1 align-top bg-amber-50/80">
+                                    <div v-if="getEarlyStaffs(d.dateString).length > 0" class="flex flex-col gap-0.5">
+                                        <div v-for="item in getEarlyStaffs(d.dateString)" :key="item.name" 
+                                             class="bg-amber-200 text-amber-900 rounded px-1 py-0.5 text-[9px] font-bold shadow-xs">
+                                            {{ item.name }}<br><span class="text-[8px] text-amber-800">({{ item.code }})</span>
+                                        </div>
+                                    </div>
+                                    <span v-else class="text-[10px] text-slate-300">-</span>
+                                </td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="staff in state.staffList" :key="staff.id" class="border-b bg-white hover:bg-slate-50">
+                                <td class="sticky-col p-2 border-r text-slate-700 bg-slate-50 text-left">
+                                    <div class="font-bold">{{ staff.name }}</div>
+                                    <div class="text-[10px] text-indigo-600 mt-0.5 font-bold">{{ countTotalHours(staff.id) }}H</div>
+                                    <!-- 労務違反アラート -->
+                                    <div v-if="getLaborWarnings(staff.id).length > 0" class="mt-1 no-print">
+                                        <div v-for="w in getLaborWarnings(staff.id)" class="text-[9px] text-red-600 bg-red-100 border border-red-300 rounded px-1 mb-0.5 font-bold leading-tight">
+                                            ⚠ {{ w }}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td v-for="d in days" :key="d.dateString" 
+                                    @click="openSelectModal(staff.id, d.dateString)"
+                                    :class="['border-r p-1 cursor-pointer transition select-none hover:opacity-80 relative', getCellColor(staff.id, d.dateString)]">
+                                    
+                                    <!-- 希望休マーク -->
+                                    <template v-if="isRequestedOff(staff.id, d.dateString)">
+                                        <span class="text-[9px] text-rose-600 font-bold bg-rose-100 px-1 rounded absolute top-0.5 right-0.5 no-print" title="希望休">希</span>
+                                    </template>
+
+                                    <div class="w-full h-11 flex flex-col items-center justify-center">
+                                        <template v-if="isEarlyType(getShiftCode(staff.id, d.dateString))">
+                                            <span class="bg-black/10 font-bold text-[11px] px-1.5 py-0.5 rounded shadow-xs">
+                                                {{ getShiftCode(staff.id, d.dateString) }}
+                                            </span>
+                                            <span class="text-[9px] font-bold opacity-80 mt-0.5">
+                                                {{ getShiftStartTime(getShiftCode(staff.id, d.dateString)) }}
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="font-bold text-sm">{{ getShiftCode(staff.id, d.dateString) }}</span>
+                                        </template>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 🎯 ポップアップ選択モーダル (シフト表用) -->
+            <div v-if="activeCell" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 no-print" @click.self="activeCell = null">
+                <div class="bg-white rounded-xl shadow-xl p-4 max-w-sm w-full space-y-3">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h3 class="font-bold text-base text-slate-700">{{ getStaffName(activeCell.staffId) }}さん ({{ activeCell.dateString.slice(5) }})</h3>
+                        <button @click="activeCell = null" class="text-slate-400 font-bold text-lg">✕</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto">
+                        <button v-for="type in state.shiftTypes" :key="type.code"
+                                @click="selectShift(type.code)"
+                                :class="['p-2 rounded border text-left font-bold transition flex justify-between items-center', type.colorClass]">
+                            <div>
+                                <div>{{ type.code || '未定（クリア）' }}</div>
+                                <div class="text-[10px] font-normal opacity-80">{{ type.name }}</div>
+                            </div>
+                        </button>
+                    </div>
+                    <!-- 希望休登録ボタン -->
+                    <div class="border-t pt-2 mt-2 space-y-2">
+                        <button @click="setRequestOff" class="w-full bg-rose-50 text-rose-600 border border-rose-200 p-2 rounded font-bold hover:bg-rose-100 text-sm flex items-center justify-center gap-1">
+                            📝 この日を「希望休」として登録
+                        </button>
+                        <button v-if="isRequestedOff(activeCell.staffId, activeCell.dateString)" @click="clearRequest(activeCell.staffId, activeCell.dateString)" class="w-full bg-slate-100 text-slate-600 p-1.5 rounded font-bold hover:bg-slate-200 text-xs">
+                            希望休を解除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔄 トレードタブ -->
+            <div v-show="currentTab === 'trade'" class="space-y-6">
+                <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                    <h2 class="text-base font-bold mb-3 text-indigo-800">🔄 シフト交代（トレード）申請</h2>
+                    <p class="text-xs text-indigo-700 mb-3">急病などの際、スタッフ間でシフトを交代するための申請フォームです。管理者が承認するとシフト表に反映されます。</p>
+                    <div class="flex flex-wrap gap-3 items-end">
+                        <label class="text-sm font-bold text-slate-700">対象日付 <input type="date" v-model="newTrade.dateString" class="border rounded p-1.5 w-full mt-1 bg-white"></label>
+                        <label class="text-sm font-bold text-slate-700">申請者 (代わってほしい人)
+                            <select v-model="newTrade.fromStaffId" class="border rounded p-1.5 w-full mt-1 bg-white">
+                                <option v-for="s in state.staffList" :value="s.id">{{ s.name }}</option>
+                            </select>
+                        </label>
+                        <label class="text-sm font-bold text-slate-700">代行者 (代わりに出る人)
+                            <select v-model="newTrade.toStaffId" class="border rounded p-1.5 w-full mt-1 bg-white">
+                                <option v-for="s in state.staffList" :value="s.id">{{ s.name }}</option>
+                            </select>
+                        </label>
+                        <button @click="submitTrade" class="bg-indigo-600 text-white px-5 py-1.5 rounded font-bold shadow hover:bg-indigo-700">申請する</button>
+                    </div>
+                </div>
+
+                <div class="bg-white border rounded shadow-sm p-4">
+                    <h2 class="text-base font-bold mb-3 text-slate-700">📋 トレード申請一覧 (管理者確認用)</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm border-collapse min-w-[500px]">
+                            <thead>
+                                <tr class="bg-slate-100 border-b">
+                                    <th class="p-2">日付</th>
+                                    <th class="p-2">申請者 ➡ 代行者</th>
+                                    <th class="p-2">シフト変化 (申請時点)</th>
+                                    <th class="p-2">ステータス / 操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="trade in sortedTrades" :key="trade.id" class="border-b hover:bg-slate-50">
+                                    <td class="p-2 font-bold text-indigo-600">{{ trade.dateString }}</td>
+                                    <td class="p-2 font-bold">{{ getStaffName(trade.fromStaffId) }} <span class="text-slate-400 font-normal">➡</span> {{ getStaffName(trade.toStaffId) }}</td>
+                                    <td class="p-2 text-xs text-slate-600">
+                                        {{ getStaffName(trade.fromStaffId) }}: <span class="bg-slate-200 px-1 rounded text-slate-800">{{ trade.fromShift || '休/無' }} ➡ {{ trade.toShift || '休/無' }}</span><br>
+                                        {{ getStaffName(trade.toStaffId) }}: <span class="bg-slate-200 px-1 rounded text-slate-800">{{ trade.toShift || '休/無' }} ➡ {{ trade.fromShift || '休/無' }}</span>
+                                    </td>
+                                    <td class="p-2">
+                                        <span v-if="trade.status === 'approved'" class="text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded">✅ 承認済</span>
+                                        <span v-else-if="trade.status === 'rejected'" class="text-rose-600 font-bold bg-rose-50 px-2 py-1 rounded">❌ 却下</span>
+                                        <div v-else class="flex gap-2">
+                                            <button @click="approveTrade(trade)" class="bg-emerald-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-emerald-600 shadow-sm">承認 (反映)</button>
+                                            <button @click="rejectTrade(trade)" class="bg-rose-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-rose-600 shadow-sm">却下</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-if="!state.trades || state.trades.length === 0">
+                                    <td colspan="4" class="p-4 text-center text-slate-500">現在、承認待ちの申請はありません。</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📊 集計・グラフタブ -->
+            <div v-show="currentTab === 'summary'" class="flex flex-col h-full space-y-4">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 no-print">
+                    <div class="bg-white border rounded p-3 shadow-sm">
+                        <h2 class="text-sm font-bold text-indigo-700 mb-2">📊 勤務回数の内訳</h2>
+                        <div class="relative h-48 w-full"><canvas id="shiftCountChart"></canvas></div>
+                    </div>
+                    <div class="bg-white border rounded p-3 shadow-sm">
+                        <h2 class="text-sm font-bold text-amber-600 mb-2">⏱️ 均等対象・特殊勤務の担当時間(H)</h2>
+                        <div class="relative h-48 w-full"><canvas id="shiftHourChart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto border rounded bg-white shadow-sm flex-1">
+                    <div class="p-2 bg-indigo-50 border-b flex justify-between items-center">
+                        <h2 class="text-sm font-bold text-indigo-800">💰 個人別 概算人件費</h2>
+                        <div class="text-base font-bold text-slate-700">
+                            今月の合計人件費予想: <span class="text-xl text-green-700">¥{{ totalCost.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                    <table class="w-full text-center border-collapse text-xs">
+                        <thead class="bg-slate-200 sticky top-0">
+                            <tr>
+                                <th class="p-2 border-r border-b text-left">名前</th>
+                                <th v-for="type in state.shiftTypes.filter(t => t.code)" :key="type.code" class="p-2 border-r border-b">
+                                    {{ type.name }}<br><span class="text-[9px] text-slate-500 font-normal">({{ type.hours }}H)</span>
+                                </th>
+                                <th class="p-2 border-b bg-indigo-100 font-bold">合計出勤日</th>
+                                <th class="p-2 border-b bg-indigo-200 font-bold text-indigo-900">合計時間</th>
+                                <th class="p-2 border-b bg-green-200 font-bold text-green-900">概算給与 (時給)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="staff in state.staffList" :key="staff.id" class="border-b hover:bg-slate-50">
+                                <td class="p-2 border-r font-bold text-left">{{ staff.name }}</td>
+                                <td v-for="type in state.shiftTypes.filter(t => t.code)" :key="type.code" class="p-2 border-r">
+                                    {{ countShift(staff.id, type.code) }}
+                                </td>
+                                <td class="p-2 font-bold bg-slate-50 text-indigo-700">{{ countTotalWorkDays(staff.id) }}日</td>
+                                <td class="p-2 font-bold bg-slate-50 text-indigo-900 text-sm">{{ countTotalHours(staff.id) }}H</td>
+                                <td class="p-2 font-bold bg-green-50 text-green-700 text-sm">
+                                    ¥{{ (countTotalHours(staff.id) * (staff.hourlyWage || 0)).toLocaleString() }}
+                                    <span class="text-[9px] text-slate-500 block font-normal">(¥{{staff.hourlyWage}}/h)</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, watch, computed, onMounted, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const tabs = [
+                    { id: 'shift', name: '📅 シフト表' },
+                    { id: 'trade', name: '🔄 トレード' },
+                    { id: 'summary', name: '📊 グラフ・集計' },
+                    { id: 'settings', name: '⚙️ 設定・条件' }
+                ];
+                const currentTab = ref('shift');
+                const activeCell = ref(null);
+                
+                let chartCountInst = null;
+                let chartHourInst = null;
+
+                const defaultState = {
+                    targetMonth: new Date().toISOString().slice(0, 7),
+                    staffList: [
+                        { id: 1, name: '高木', hourlyWage: 1100, fixedDaysOff: [], unavailableShifts: [] }, 
+                        { id: 2, name: '中井', hourlyWage: 1050, fixedDaysOff: ['日'], unavailableShifts: ['夜'] },
+                        { id: 3, name: '伊藤', hourlyWage: 1200, fixedDaysOff: [], unavailableShifts: [] }, 
+                        { id: 4, name: '白井', hourlyWage: 1000, fixedDaysOff: [], unavailableShifts: [] }
+                    ],
+                    baseRotationStr: '出,遅,休,出,出,休',
+                    cascadeDirection: 'right-down',
+                    shiftTypes: [
+                        { code: '', name: '未定', hours: 0, startTime: '', isRequired: false, isEarly: false, colorClass: 'bg-white' },
+                        { code: '休', name: '休み', hours: 0, startTime: '', isRequired: false, isEarly: false, colorClass: 'bg-rose-50 text-rose-700' },
+                        { code: '出', name: '通常出勤', hours: 8, startTime: '', isRequired: false, isEarly: false, colorClass: 'bg-emerald-50 text-emerald-800' },
+                        { code: 'ハ1', name: '早出7:30', hours: 8, startTime: '07:30', isRequired: true, isEarly: true, colorClass: 'bg-amber-100 text-amber-900', colorCode: '#fbbf24' },
+                        { code: 'オ1', name: '早出8:30', hours: 8, startTime: '08:30', isRequired: true, isEarly: true, colorClass: 'bg-orange-100 text-orange-900', colorCode: '#f59e0b' },
+                        { code: '遅', name: '遅番', hours: 8, startTime: '10:00', isRequired: true, isEarly: true, colorClass: 'bg-blue-100 text-blue-900', colorCode: '#60a5fa' },
+                        { code: '当', name: '当番', hours: 4, startTime: '', isRequired: true, isEarly: false, colorClass: 'bg-purple-100 text-purple-900', colorCode: '#a855f7' }
+                    ],
+                    shifts: {},
+                    requests: {}, // { staffId: { dateString: '休' } }
+                    trades: []
+                };
+
+                const state = reactive(JSON.parse(JSON.stringify(defaultState)));
+                const days = ref([]);
+                const newStaffName = ref('');
+                const saveMessage = ref('');
+                const newShift = reactive({ code: '', name: '', startTime: '', hours: 8, isRequired: false, isEarly: false });
+                const newTrade = reactive({ dateString: '', fromStaffId: '', toStaffId: '' });
+
+                const loadData = () => {
+                    const saved = localStorage.getItem('shiftAppV7_Data');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        Object.assign(state, parsed);
+                        // 互換性補填
+                        state.staffList.forEach(s => {
+                            if (s.hourlyWage === undefined) s.hourlyWage = 1000;
+                            if (!s.fixedDaysOff) s.fixedDaysOff = [];
+                            if (!s.unavailableShifts) s.unavailableShifts = [];
+                        });
+                        if (!state.requests) state.requests = {};
+                        if (!state.trades) state.trades = [];
+                        if (!state.baseRotationStr) state.baseRotationStr = '出,遅,休,出,出,休';
+                        if (!state.cascadeDirection) state.cascadeDirection = 'right-down';
+                    }
+                    generateCalendar();
+                };
+
+                watch(state, () => {
+                    localStorage.setItem('shiftAppV7_Data', JSON.stringify(state));
+                    saveMessage.value = '保存完了';
+                    setTimeout(() => { saveMessage.value = ''; }, 1500);
+                    if (currentTab.value === 'summary') updateCharts();
+                }, { deep: true });
+
+                watch(currentTab, (newTab) => {
+                    if (newTab === 'summary') nextTick(() => updateCharts());
+                });
+
+                const generateCalendar = () => {
+                    if (!state.targetMonth) return;
+                    const [year, month] = state.targetMonth.split('-').map(Number);
+                    const lastDay = new Date(year, month, 0).getDate();
+                    const weekChars = ['日', '月', '火', '水', '木', '金', '土'];
+                    const newDays = [];
+                    for (let d = 1; d <= lastDay; d++) {
+                        const curDate = new Date(year, month - 1, d);
+                        newDays.push({ day: d, dayOfWeek: weekChars[curDate.getDay()], dateString: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+                    }
+                    days.value = newDays;
+                };
+
+                // --- 🌟 V7: 希望休・条件考慮のスマート自動作成 ---
+                const autoFillShift = () => {
+                    if(!confirm('希望休や固定休などの条件を考慮してシフトを自動作成しますか？')) return;
+
+                    const basePattern = state.baseRotationStr.split(',').map(s => s.trim()).filter(s => s);
+                    if (basePattern.length === 0) return alert('設定タブで基本ローテーションを設定してください。');
+                    
+                    const L = basePattern.length;
+                    state.staffList.forEach(s => state.shifts[s.id] = {});
+
+                    // 1. ベース割当（希望休・固定休の回避）
+                    days.value.forEach((d, dIndex) => {
+                        state.staffList.forEach((staff, sIndex) => {
+                            // 📝 希望休または固定休の判定
+                            const isReqOff = isRequestedOff(staff.id, d.dateString);
+                            const isFixedOff = staff.fixedDaysOff && staff.fixedDaysOff.includes(d.dayOfWeek);
+
+                            if (isReqOff || isFixedOff) {
+                                state.shifts[staff.id][d.dateString] = '休'; // 最優先で休みにする
+                            } else {
+                                // ズレ計算
+                                let pIndex = 0;
+                                if (state.cascadeDirection === 'right-down') pIndex = (dIndex - sIndex + L * 100) % L;
+                                else if (state.cascadeDirection === 'left-down') pIndex = (dIndex + sIndex) % L;
+                                else pIndex = dIndex % L;
+                                
+                                let code = basePattern[pIndex];
+                                // 不可シフトの場合は代替で「休」にする
+                                if (staff.unavailableShifts && staff.unavailableShifts.includes(code)) {
+                                    code = '休';
+                                }
+                                state.shifts[staff.id][d.dateString] = code;
+                            }
+                        });
+                    });
+
+                    // 2. 特殊シフト(均等対象)のスマート割り当て
+                    const specialTypes = state.shiftTypes.filter(t => t.isEarly);
+                    days.value.forEach(d => {
+                        specialTypes.forEach(type => {
+                            const alreadyAssignedCount = state.staffList.filter(s => state.shifts[s.id][d.dateString] === type.code).length;
+                            if (alreadyAssignedCount > 0) return; // すでに割り当て済ならスキップ
+
+                            // その日「出」になっており、かつ、そのシフトが不可設定でない人を抽出
+                            let availableStaff = state.staffList.filter(s => {
+                                const currentCode = state.shifts[s.id][d.dateString];
+                                const canDo = !(s.unavailableShifts && s.unavailableShifts.includes(type.code));
+                                return currentCode === '出' && canDo;
+                            });
+
+                            if(availableStaff.length > 0) {
+                                availableStaff.sort((a, b) => countShift(a.id, type.code) - countShift(b.id, type.code));
+                                state.shifts[availableStaff[0].id][d.dateString] = type.code;
+                            }
+                        });
+                    });
+                };
+
+                // --- ⚠️ 労務違反・過重労働アラート ---
+                const getLaborWarnings = (staffId) => {
+                    let warnings = [];
+                    if (!state.shifts[staffId]) return warnings;
+                    
+                    // 1. 6連勤チェック
+                    let consecutive = 0;
+                    days.value.forEach(d => {
+                        const code = state.shifts[staffId][d.dateString];
+                        if (code && code !== '休') {
+                            consecutive++;
+                            if (consecutive >= 6 && !warnings.includes('6連勤以上')) warnings.push('6連勤以上');
+                        } else {
+                            consecutive = 0;
+                        }
+                    });
+                    
+                    // 2. 月間労働時間オーバー (160h)
+                    const totalH = countTotalHours(staffId);
+                    if (totalH > 160) warnings.push('160h超過');
+                    
+                    return warnings;
+                };
+
+                const getMissingShifts = (dateString) => {
+                    const requiredTypes = state.shiftTypes.filter(t => t.isRequired && t.code !== '');
+                    const assignedCodes = state.staffList.map(s => getShiftCode(s.id, dateString));
+                    return requiredTypes.filter(t => !assignedCodes.includes(t.code)).map(t => t.name);
+                };
+
+                // --- 📝 希望休操作 ---
+                const isRequestedOff = (staffId, dateString) => {
+                    return state.requests && state.requests[staffId] && state.requests[staffId][dateString] === '休';
+                };
+                const setRequestOff = () => {
+                    if (activeCell.value) {
+                        const { staffId, dateString } = activeCell.value;
+                        if (!state.requests) state.requests = {};
+                        if (!state.requests[staffId]) state.requests[staffId] = {};
+                        state.requests[staffId][dateString] = '休';
+                        activeCell.value = null;
+                    }
+                };
+                const clearRequest = (staffId, dateString) => {
+                    if (state.requests?.[staffId]?.[dateString]) {
+                        delete state.requests[staffId][dateString];
+                    }
+                    activeCell.value = null;
+                };
+
+                // --- 🔄 トレード（交代申請）ロジック ---
+                const sortedTrades = computed(() => (state.trades || []).slice().sort((a, b) => b.id - a.id));
+                const submitTrade = () => {
+                    if (!newTrade.dateString || !newTrade.fromStaffId || !newTrade.toStaffId) return alert('すべて入力してください');
+                    if (newTrade.fromStaffId === newTrade.toStaffId) return alert('同じ人は選べません');
+                    
+                    const fromShift = getShiftCode(newTrade.fromStaffId, newTrade.dateString);
+                    const toShift = getShiftCode(newTrade.toStaffId, newTrade.dateString);
+                    
+                    if(!state.trades) state.trades = [];
+                    state.trades.push({
+                        id: Date.now(), dateString: newTrade.dateString,
+                        fromStaffId: newTrade.fromStaffId, toStaffId: newTrade.toStaffId,
+                        fromShift: fromShift, toShift: toShift, status: 'pending'
+                    });
+                    alert('交代申請を行いました。');
+                };
+                const approveTrade = (trade) => {
+                    trade.status = 'approved';
+                    if (!state.shifts[trade.fromStaffId]) state.shifts[trade.fromStaffId] = {};
+                    if (!state.shifts[trade.toStaffId]) state.shifts[trade.toStaffId] = {};
+                    state.shifts[trade.fromStaffId][trade.dateString] = trade.toShift;
+                    state.shifts[trade.toStaffId][trade.dateString] = trade.fromShift;
+                };
+                const rejectTrade = (trade) => trade.status = 'rejected';
+
+                // --- 💾 バックアップ / 復元 (JSON) ---
+                const exportJSON = () => {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+                    const dlNode = document.createElement('a');
+                    dlNode.setAttribute("href", dataStr);
+                    dlNode.setAttribute("download", `shift_backup_${state.targetMonth}.json`);
+                    document.body.appendChild(dlNode);
+                    dlNode.click();
+                    dlNode.remove();
+                };
+                const importJSON = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            Object.assign(state, JSON.parse(e.target.result));
+                            generateCalendar();
+                            alert("データを復元しました。");
+                        } catch(err) { alert("ファイルの読み込みに失敗しました。"); }
+                    };
+                    reader.readAsText(file);
+                };
+
+                // --- 💰 概算給与計算 ---
+                const totalCost = computed(() => {
+                    return state.staffList.reduce((sum, staff) => sum + (countTotalHours(staff.id) * (staff.hourlyWage || 0)), 0);
+                });
+
+                // --- 🖨️ 印刷/PDF ---
+                const printShift = () => window.print();
+
+                // --- 📈 グラフ描画 ---
+                const updateCharts = () => {
+                    const ctxCount = document.getElementById('shiftCountChart');
+                    const ctxHour = document.getElementById('shiftHourChart');
+                    if(!ctxCount || !ctxHour) return;
+
+                    const labels = state.staffList.map(s => s.name);
+                    const defaultColors = ['#10b981', '#fbbf24', '#f59e0b', '#3b82f6', '#8b5cf6', '#a855f7', '#ef4444'];
+                    
+                    const countTypes = state.shiftTypes.filter(t => t.code !== '' && t.code !== '休');
+                    const countDatasets = countTypes.map((type, i) => ({
+                        label: type.name, data: state.staffList.map(s => countShift(s.id, type.code)),
+                        backgroundColor: type.colorCode || defaultColors[i % defaultColors.length], borderWidth: 1
+                    }));
+
+                    const hourTypes = state.shiftTypes.filter(t => (t.isEarly || t.isRequired) && t.code !== '出' && t.code !== '休');
+                    const hourDatasets = hourTypes.map((type, i) => ({
+                        label: type.name + '(H)', data: state.staffList.map(s => countShift(s.id, type.code) * (type.hours || 0)),
+                        backgroundColor: type.colorCode || defaultColors[(i+1) % defaultColors.length], borderWidth: 1
+                    }));
+
+                    if (chartCountInst) {
+                        chartCountInst.data.labels = labels; chartCountInst.data.datasets = countDatasets; chartCountInst.update();
+                    } else {
+                        chartCountInst = new Chart(ctxCount, {
+                            type: 'bar', data: { labels, datasets: countDatasets },
+                            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } } }
+                        });
+                    }
+
+                    if (chartHourInst) {
+                        chartHourInst.data.labels = labels; chartHourInst.data.datasets = hourDatasets; chartHourInst.update();
+                    } else {
+                        chartHourInst = new Chart(ctxHour, {
+                            type: 'bar', data: { labels, datasets: hourDatasets },
+                            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } } }
+                        });
+                    }
+                };
+
+                // --- UI / 計算ロジック統合 ---
+                const isEarlyType = (code) => { const t = state.shiftTypes.find(t => t.code === code); return t ? t.isEarly : false; };
+                const getShiftStartTime = (code) => { const t = state.shiftTypes.find(t => t.code === code); return t ? t.startTime : ''; };
+                const getEarlyStaffs = (dateString) => {
+                    const result = [];
+                    state.staffList.forEach(staff => {
+                        const code = getShiftCode(staff.id, dateString);
+                        if (isEarlyType(code)) result.push({ name: staff.name, code });
+                    });
+                    return result;
+                };
+
+                const openSelectModal = (staffId, dateString) => activeCell.value = { staffId, dateString };
+                const selectShift = (code) => {
+                    if (activeCell.value) {
+                        if (!state.shifts[activeCell.value.staffId]) state.shifts[activeCell.value.staffId] = {};
+                        state.shifts[activeCell.value.staffId][activeCell.value.dateString] = code;
+                        activeCell.value = null; 
+                    }
+                };
+
+                const getShiftCode = (staffId, dateString) => state.shifts[staffId] ? (state.shifts[staffId][dateString] || '') : '';
+                const getStaffName = (staffId) => (state.staffList.find(x => x.id === staffId) || {}).name;
+                const getCellColor = (staffId, dateString) => { const t = state.shiftTypes.find(t => t.code === getShiftCode(staffId, dateString)); return t ? t.colorClass : 'bg-white'; };
+                const getDayColor = (dayOfWeek) => {
+                    if (dayOfWeek === '日') return 'text-red-600 bg-red-50';
+                    if (dayOfWeek === '土') return 'text-blue-600 bg-blue-50';
+                    return 'bg-slate-100 text-slate-600';
+                };
+
+                const clearShift = () => {
+                    if(confirm('今月のシフトをすべて消去しますか？')) {
+                        state.staffList.forEach(s => { if(state.shifts[s.id]) days.value.forEach(d => state.shifts[s.id][d.dateString] = '') });
+                    }
+                };
+
+                const countShift = (staffId, typeCode) => {
+                    if (!state.shifts[staffId]) return 0;
+                    return days.value.filter(d => state.shifts[staffId][d.dateString] === typeCode).length;
+                };
+
+                const countTotalWorkDays = (staffId) => {
+                    if (!state.shifts[staffId]) return 0;
+                    return days.value.filter(d => { const code = state.shifts[staffId][d.dateString]; return code && code !== '休'; }).length;
+                };
+
+                const countTotalHours = (staffId) => {
+                    if (!state.shifts[staffId]) return 0;
+                    let total = 0;
+                    days.value.forEach(d => {
+                        const code = state.shifts[staffId][d.dateString];
+                        const type = state.shiftTypes.find(t => t.code === code);
+                        if (type && type.hours) total += type.hours;
+                    });
+                    return total;
+                };
+
+                // --- 設定操作 ---
+                const addStaff = () => { if (newStaffName.value.trim()) { state.staffList.push({ id: Date.now(), name: newStaffName.value, hourlyWage: 1000, fixedDaysOff: [], unavailableShifts: [] }); newStaffName.value = ''; } };
+                const removeStaff = (id) => { if(confirm('削除しますか？')) state.staffList = state.staffList.filter(s => s.id !== id); };
+
+                const addShiftType = () => {
+                    if (!newShift.code) return alert('記号を入力してください');
+                    state.shiftTypes.push({
+                        code: newShift.code, name: newShift.name, startTime: newShift.startTime, hours: newShift.hours,
+                        isRequired: newShift.isRequired, isEarly: newShift.isEarly,
+                        colorClass: newShift.isEarly ? 'bg-teal-100 text-teal-900' : 'bg-slate-200 text-slate-800'
+                    });
+                    newShift.code = ''; newShift.name = ''; newShift.startTime = ''; newShift.isRequired = false; newShift.isEarly = false;
+                };
+
+                const removeShiftType = (index) => {
+                    if(confirm('この勤務区分を削除しますか？')) state.shiftTypes.splice(index, 1);
+                };
+
+                onMounted(() => loadData());
+
+                return {
+                    tabs, currentTab, state, days, newStaffName, saveMessage, activeCell, newShift, newTrade, sortedTrades, totalCost,
+                    generateCalendar, autoFillShift, clearShift, getMissingShifts, getLaborWarnings,
+                    openSelectModal, selectShift, getShiftCode, getCellColor, getDayColor,
+                    isEarlyType, getShiftStartTime, getEarlyStaffs, getStaffName, 
+                    countShift, countTotalWorkDays, countTotalHours,
+                    addStaff, removeStaff, addShiftType, removeShiftType,
+                    isRequestedOff, setRequestOff, clearRequest,
+                    submitTrade, approveTrade, rejectTrade, exportJSON, importJSON, printShift
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
