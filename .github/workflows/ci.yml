@@ -28,6 +28,16 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # webServer runs `npm run dev` = `vinext dev`, a real local Cloudflare
+    # Workers dev server (Miniflare). With no stored `wrangler login` state
+    # and no token, some of its startup paths reach for the real Cloudflare
+    # API before falling back to local-only behavior. A placeholder token
+    # short-circuits that (D1 here is always local/file-backed — no calls
+    # are actually made with it), and disabling telemetry skips the
+    # first-run metrics opt-in path. Neither needs to be a real credential.
+    env:
+      CLOUDFLARE_API_TOKEN: ci-local-dev-placeholder-not-a-real-token
+      WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
