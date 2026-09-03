@@ -32,13 +32,19 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    // In CI, serve the production build (`npm run build` in the workflow,
+    // then `npm run start` = `wrangler dev` against the prebuilt worker)
+    // instead of the live `vinext dev` server. `vinext dev`'s Vite-based
+    // dev server hung indefinitely on a fresh GitHub Actions runner with
+    // zero output past its startup banner (reproduced across two full CI
+    // runs, up to a 300s timeout) — root cause not pinned down, but
+    // `wrangler dev` against a prebuilt worker starts in well under a
+    // second even with every local cache (.wrangler, ~/.config/.wrangler,
+    // dist/) cleared, and sidesteps whatever in `vinext dev`'s startup
+    // path was hanging. Locally, `npm run dev` keeps live reload.
+    command: process.env.CI ? "npm run build && npm run start" : "npm run dev",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
-    // `npm run dev` boots a real local Cloudflare Workers dev server
-    // (vinext/Miniflare), which is heavier to cold-start than a plain
-    // Next.js dev server, especially on a fresh CI runner with no warm
-    // esbuild/Vite caches. 120s cut it too close in CI; give it more room.
     timeout: 300_000,
   },
 });
