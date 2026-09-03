@@ -1,8 +1,10 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getScopedDb } from "@/lib/db/scopedClient";
 import { isManager, requireCurrentMembership } from "@/lib/org/current";
+import { shiftTypes } from "@/drizzle/schema";
 
 export interface ShiftTypeInput {
   code: string;
@@ -23,22 +25,25 @@ export async function createShiftType(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("shift_types").insert({
-    organization_id: organizationId,
-    code: input.code,
-    name: input.name,
-    start_time: input.startTime,
-    end_time: input.endTime,
-    crosses_midnight: input.crossesMidnight,
-    break_minutes: input.breakMinutes,
-    is_required: input.isRequired,
-    is_balanced: input.isBalanced,
-    color_key: input.colorKey,
-    sort_order: input.sortOrder,
-  });
+  const { db } = getScopedDb(organizationId);
 
-  if (error) return { error: error.message };
+  try {
+    await db.insert(shiftTypes).values({
+      organizationId,
+      code: input.code,
+      name: input.name,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      crossesMidnight: input.crossesMidnight,
+      breakMinutes: input.breakMinutes,
+      isRequired: input.isRequired,
+      isBalanced: input.isBalanced,
+      colorKey: input.colorKey,
+      sortOrder: input.sortOrder,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+  }
 
   revalidatePath("/settings/shift-types");
   return { error: null };
@@ -51,25 +56,27 @@ export async function updateShiftType(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("shift_types")
-    .update({
-      code: input.code,
-      name: input.name,
-      start_time: input.startTime,
-      end_time: input.endTime,
-      crosses_midnight: input.crossesMidnight,
-      break_minutes: input.breakMinutes,
-      is_required: input.isRequired,
-      is_balanced: input.isBalanced,
-      color_key: input.colorKey,
-      sort_order: input.sortOrder,
-    })
-    .eq("id", shiftTypeId)
-    .eq("organization_id", organizationId);
+  const { db } = getScopedDb(organizationId);
 
-  if (error) return { error: error.message };
+  try {
+    await db
+      .update(shiftTypes)
+      .set({
+        code: input.code,
+        name: input.name,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        crossesMidnight: input.crossesMidnight,
+        breakMinutes: input.breakMinutes,
+        isRequired: input.isRequired,
+        isBalanced: input.isBalanced,
+        colorKey: input.colorKey,
+        sortOrder: input.sortOrder,
+      })
+      .where(and(eq(shiftTypes.id, shiftTypeId), eq(shiftTypes.organizationId, organizationId)));
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+  }
 
   revalidatePath("/settings/shift-types");
   return { error: null };
@@ -79,19 +86,21 @@ export async function deleteShiftType(shiftTypeId: string): Promise<{ error: str
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("shift_types")
-    .delete()
-    .eq("id", shiftTypeId)
-    .eq("organization_id", organizationId);
+  const { db } = getScopedDb(organizationId);
 
-  // shift_assignments references shift_types with ON DELETE RESTRICT, so a
-  // shift type still in use surfaces as a foreign-key violation here rather
-  // than silently orphaning schedule data.
-  if (error) {
+  try {
+    await db
+      .delete(shiftTypes)
+      .where(and(eq(shiftTypes.id, shiftTypeId), eq(shiftTypes.organizationId, organizationId)));
+  } catch (err) {
+    // shift_assignments references shift_types with ON DELETE RESTRICT, so a
+    // shift type still in use surfaces as a foreign-key violation here rather
+    // than silently orphaning schedule data.
+    const message = err instanceof Error ? err.message : "";
     return {
-      error: error.code === "23503" ? "このシフト種別は使用中のため削除できません" : error.message,
+      error: /FOREIGN KEY|SQLITE_CONSTRAINT/i.test(message)
+        ? "このシフト種別は使用中のため削除できません"
+        : message || "削除に失敗しました",
     };
   }
 

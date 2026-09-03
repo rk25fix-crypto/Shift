@@ -22,7 +22,7 @@ export default async function StaffDetailPage({
   const canEditCompensation = role === "owner";
   const [shiftTypes, hourlyWage, monthAssignments] = await Promise.all([
     listShiftTypes(organizationId),
-    canEditCompensation ? getStaffHourlyWage(staffId) : Promise.resolve(null),
+    getStaffHourlyWage(organizationId, staffId, role),
     getAssignmentsForStaffMonth(organizationId, staffId, todayInTimezone()),
   ]);
 

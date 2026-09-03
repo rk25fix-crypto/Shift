@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { and, eq } from "drizzle-orm";
+import { getScopedDb } from "@/lib/db/scopedClient";
+import { staff, staffCompensation } from "@/drizzle/schema";
+import type { MembershipRole } from "@/lib/org/current";
 
 export interface StaffRecord {
   id: string;
@@ -10,62 +13,67 @@ export interface StaffRecord {
 }
 
 export async function listStaff(organizationId: string): Promise<StaffRecord[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("staff")
-    .select("id, name, role_label, fixed_days_off, unavailable_shift_type_ids, is_active")
-    .eq("organization_id", organizationId)
-    .eq("is_active", true)
-    .order("name");
+  const { db } = getScopedDb(organizationId);
+  const rows = await db
+    .select()
+    .from(staff)
+    .where(and(eq(staff.organizationId, organizationId), eq(staff.isActive, true)))
+    .orderBy(staff.name);
 
-  if (error) throw new Error(error.message);
-
-  return (data ?? []).map(toStaffRecord);
+  return rows.map(toStaffRecord);
 }
 
 export async function getStaff(
   organizationId: string,
   staffId: string,
 ): Promise<StaffRecord | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("staff")
-    .select("id, name, role_label, fixed_days_off, unavailable_shift_type_ids, is_active")
-    .eq("organization_id", organizationId)
-    .eq("id", staffId)
-    .maybeSingle();
+  const { db } = getScopedDb(organizationId);
+  const [row] = await db
+    .select()
+    .from(staff)
+    .where(and(eq(staff.organizationId, organizationId), eq(staff.id, staffId)))
+    .limit(1);
 
-  return data ? toStaffRecord(data) : null;
+  return row ? toStaffRecord(row) : null;
 }
 
-/** Owner-only per RLS (compensation_owner_select policy) — returns null for non-owners rather than throwing. */
-export async function getStaffHourlyWage(staffId: string): Promise<number | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("staff_compensation")
-    .select("hourly_wage")
-    .eq("staff_id", staffId)
-    .maybeSingle();
+/**
+ * Owner-only — enforced here, not just by the caller, since D1 has no RLS
+ * to fall back on (docs/plan.md "テナント分離モデル(D1版)"). A non-owner
+ * role short-circuits to null without even querying, so a coworker's wage
+ * can never leak through this function regardless of what calls it.
+ */
+export async function getStaffHourlyWage(
+  organizationId: string,
+  staffId: string,
+  role: MembershipRole,
+): Promise<number | null> {
+  if (role !== "owner") return null;
 
-  return data?.hourly_wage ?? null;
+  const { db } = getScopedDb(organizationId);
+  const [row] = await db
+    .select({ hourlyWage: staffCompensation.hourlyWage })
+    .from(staffCompensation)
+    .where(
+      and(
+        eq(staffCompensation.organizationId, organizationId),
+        eq(staffCompensation.staffId, staffId),
+      ),
+    )
+    .limit(1);
+
+  return row?.hourlyWage ?? null;
 }
 
-interface StaffRow {
-  id: string;
-  name: string;
-  role_label: string | null;
-  fixed_days_off: number[] | null;
-  unavailable_shift_type_ids: string[] | null;
-  is_active: boolean;
-}
+type StaffRow = typeof staff.$inferSelect;
 
 function toStaffRecord(row: StaffRow): StaffRecord {
   return {
     id: row.id,
     name: row.name,
-    roleLabel: row.role_label,
-    fixedDaysOff: row.fixed_days_off ?? [],
-    unavailableShiftTypeIds: row.unavailable_shift_type_ids ?? [],
-    isActive: row.is_active,
+    roleLabel: row.roleLabel,
+    fixedDaysOff: row.fixedDaysOff,
+    unavailableShiftTypeIds: row.unavailableShiftTypeIds,
+    isActive: row.isActive,
   };
 }

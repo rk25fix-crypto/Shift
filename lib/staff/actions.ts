@@ -1,8 +1,10 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getScopedDb } from "@/lib/db/scopedClient";
 import { isManager, requireCurrentMembership } from "@/lib/org/current";
+import { staff, staffCompensation } from "@/drizzle/schema";
 
 export interface StaffInput {
   name: string;
@@ -17,28 +19,29 @@ export async function createStaff(input: StaffInput): Promise<{ error: string | 
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { data: staff, error } = await supabase
-    .from("staff")
-    .insert({
-      organization_id: organizationId,
-      name: input.name,
-      role_label: input.roleLabel || null,
-      fixed_days_off: input.fixedDaysOff,
-      unavailable_shift_type_ids: input.unavailableShiftTypeIds,
-    })
-    .select("id")
-    .single();
+  const { db } = getScopedDb(organizationId);
 
-  if (error) return { error: error.message };
+  try {
+    const [created] = await db
+      .insert(staff)
+      .values({
+        organizationId,
+        name: input.name,
+        roleLabel: input.roleLabel || null,
+        fixedDaysOff: input.fixedDaysOff,
+        unavailableShiftTypeIds: input.unavailableShiftTypeIds,
+      })
+      .returning({ id: staff.id });
 
-  if (role === "owner" && input.hourlyWage != null) {
-    const { error: compensationError } = await supabase.from("staff_compensation").insert({
-      organization_id: organizationId,
-      staff_id: staff.id,
-      hourly_wage: input.hourlyWage,
-    });
-    if (compensationError) return { error: compensationError.message };
+    if (role === "owner" && input.hourlyWage != null) {
+      await db.insert(staffCompensation).values({
+        organizationId,
+        staffId: created.id,
+        hourlyWage: input.hourlyWage,
+      });
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
   }
 
   revalidatePath("/staff");
@@ -52,28 +55,30 @@ export async function updateStaff(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("staff")
-    .update({
-      name: input.name,
-      role_label: input.roleLabel || null,
-      fixed_days_off: input.fixedDaysOff,
-      unavailable_shift_type_ids: input.unavailableShiftTypeIds,
-    })
-    .eq("id", staffId)
-    .eq("organization_id", organizationId);
+  const { db } = getScopedDb(organizationId);
 
-  if (error) return { error: error.message };
+  try {
+    await db
+      .update(staff)
+      .set({
+        name: input.name,
+        roleLabel: input.roleLabel || null,
+        fixedDaysOff: input.fixedDaysOff,
+        unavailableShiftTypeIds: input.unavailableShiftTypeIds,
+      })
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
 
-  if (role === "owner" && input.hourlyWage != null) {
-    const { error: compensationError } = await supabase
-      .from("staff_compensation")
-      .upsert(
-        { organization_id: organizationId, staff_id: staffId, hourly_wage: input.hourlyWage },
-        { onConflict: "staff_id" },
-      );
-    if (compensationError) return { error: compensationError.message };
+    if (role === "owner" && input.hourlyWage != null) {
+      await db
+        .insert(staffCompensation)
+        .values({ organizationId, staffId, hourlyWage: input.hourlyWage })
+        .onConflictDoUpdate({
+          target: staffCompensation.staffId,
+          set: { hourlyWage: input.hourlyWage, updatedAt: new Date() },
+        });
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
   }
 
   revalidatePath("/staff");
@@ -85,14 +90,11 @@ export async function deactivateStaff(staffId: string): Promise<{ error: string 
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("staff")
-    .update({ is_active: false })
-    .eq("id", staffId)
-    .eq("organization_id", organizationId);
-
-  if (error) return { error: error.message };
+  const { db } = getScopedDb(organizationId);
+  await db
+    .update(staff)
+    .set({ isActive: false })
+    .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
 
   revalidatePath("/staff");
   return { error: null };

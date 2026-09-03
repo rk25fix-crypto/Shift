@@ -7,17 +7,19 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      // RLS only holds if server code always goes through the user-scoped
-      // client. The service-role client bypasses RLS entirely, so its use
-      // is restricted to the allow-list below (Stripe webhook, admin jobs).
+      // D1 has no Row-Level Security, so tenant isolation depends entirely
+      // on every query going through the org-scoped client. The raw client
+      // touches the D1 binding directly with no org_id applied, so its use
+      // is restricted to the allow-list below (lib/db/scopedClient.ts,
+      // Better Auth's own tables, Stripe webhook, admin jobs).
       "no-restricted-imports": [
         "error",
         {
           paths: [
             {
-              name: "@/lib/supabase/service",
+              name: "@/lib/db/raw",
               message:
-                "service-role client bypasses RLS — only the Stripe webhook handler and lib/admin/** batch jobs may import it.",
+                "raw D1 client has no tenant scoping — only lib/db/scopedClient.ts, lib/auth/config.ts, the Stripe webhook handler, and lib/admin/** batch jobs may import it.",
             },
           ],
         },
@@ -25,7 +27,15 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["app/api/stripe/webhook/route.ts", "lib/admin/**/*.ts"],
+    files: [
+      "lib/db/scopedClient.ts",
+      "lib/auth/config.ts",
+      "lib/auth/actions.ts",
+      "lib/org/current.ts",
+      "lib/db/scopedClient.isolation.d1.test.ts",
+      "app/api/stripe/webhook/route.ts",
+      "lib/admin/**/*.ts",
+    ],
     rules: {
       "no-restricted-imports": "off",
     },
@@ -39,6 +49,11 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "playwright-report/**",
     "test-results/**",
+    // vinext/Cloudflare build outputs
+    ".vinext/**",
+    ".wrangler/**",
+    "dist/**",
+    "worker-configuration.d.ts",
   ]),
 ]);
 

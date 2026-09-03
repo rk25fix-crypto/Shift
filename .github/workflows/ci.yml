@@ -5,15 +5,6 @@ on:
   push:
     branches: [main]
 
-env:
-  # Placeholder values so the app can boot without a provisioned Supabase
-  # project (lib/supabase/middleware.ts falls back to "unauthenticated"
-  # rather than crashing when this URL is unreachable). Once a real project
-  # exists, set NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY as
-  # repository secrets and reference them here instead.
-  NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
-
 jobs:
   lint-typecheck-test:
     runs-on: ubuntu-latest
@@ -26,8 +17,14 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run typecheck:worker
       - run: npm run test
+      # Tenant-isolation suite (lib/db/scopedClient.isolation.d1.test.ts):
+      # runs against a real Miniflare-backed D1 instance, not mocks — the
+      # practical stand-in for Postgres RLS now that D1 has no equivalent
+      # (docs/plan.md, "テナント分離モデル(D1版)"). Must stay green on
+      # every PR.
+      - run: npm run test:d1
+      - run: npm run build
 
   e2e:
     runs-on: ubuntu-latest

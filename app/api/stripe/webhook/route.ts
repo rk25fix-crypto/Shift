@@ -1,13 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type Stripe from "stripe";
+import { eq } from "drizzle-orm";
+import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
-import { createServiceClient } from "@/lib/supabase/service";
+import { getRawDb } from "@/lib/db/raw";
+import { subscriptions } from "@/drizzle/schema";
 
 /**
- * Handles Stripe subscription lifecycle events. Runs on the service-role
- * client (allow-listed in eslint.config.mjs) because there is no logged-in
- * user on a webhook request — Stripe's signature check is what authenticates
- * this request instead of a Supabase session.
+ * Handles Stripe subscription lifecycle events. Runs on the raw D1 client
+ * (allow-listed in eslint.config.mjs) because there is no logged-in user on
+ * a webhook request — Stripe's signature check authenticates this request
+ * instead of a session, and this is the one write path with no
+ * organizationId to scope by (it derives the org from the Stripe payload).
  */
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -19,25 +22,34 @@ export async function POST(request: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = getStripe().webhooks.constructEvent(
+    const stripe = getStripe();
+    // constructEvent's synchronous signature check depends on Node's crypto
+    // module and does not run on Cloudflare Workers — constructEventAsync +
+    // the SubtleCrypto-based provider is the Workers-compatible path.
+    event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET!,
+      undefined,
+      Stripe.createSubtleCryptoProvider(),
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "invalid signature";
-    return NextResponse.json({ error: `Webhook signature verification failed: ${message}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `Webhook signature verification failed: ${message}` },
+      { status: 400 },
+    );
   }
 
-  const supabase = createServiceClient();
+  const db = getRawDb();
 
   // Idempotency: Stripe can resend the same event, so a second delivery must
   // be a no-op rather than double-applying (e.g. extending a trial twice).
-  const { data: existing } = await supabase
-    .from("subscriptions")
-    .select("id")
-    .eq("stripe_event_id", event.id)
-    .maybeSingle();
+  const [existing] = await db
+    .select({ id: subscriptions.id })
+    .from(subscriptions)
+    .where(eq(subscriptions.stripeEventId, event.id))
+    .limit(1);
 
   if (existing) {
     return NextResponse.json({ received: true, duplicate: true });
@@ -48,46 +60,50 @@ export async function POST(request: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       const organizationId = session.client_reference_id;
       if (organizationId) {
-        await supabase
-          .from("subscriptions")
-          .update({
-            stripe_customer_id: session.customer as string,
-            stripe_subscription_id: session.subscription as string,
+        await db
+          .update(subscriptions)
+          .set({
+            stripeCustomerId: session.customer as string,
+            stripeSubscriptionId: session.subscription as string,
             status: "active",
-            stripe_event_id: event.id,
+            stripeEventId: event.id,
           })
-          .eq("organization_id", organizationId);
+          .where(eq(subscriptions.organizationId, organizationId));
       }
       break;
     }
     case "invoice.paid": {
       const invoice = event.data.object as Stripe.Invoice;
-      const subscriptionId = invoice.parent?.subscription_details?.subscription as string | undefined;
+      const subscriptionId = invoice.parent?.subscription_details?.subscription as
+        | string
+        | undefined;
       if (subscriptionId) {
-        await supabase
-          .from("subscriptions")
-          .update({ status: "active", stripe_event_id: event.id })
-          .eq("stripe_subscription_id", subscriptionId);
+        await db
+          .update(subscriptions)
+          .set({ status: "active", stripeEventId: event.id })
+          .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
       }
       break;
     }
     case "invoice.payment_failed": {
       const invoice = event.data.object as Stripe.Invoice;
-      const subscriptionId = invoice.parent?.subscription_details?.subscription as string | undefined;
+      const subscriptionId = invoice.parent?.subscription_details?.subscription as
+        | string
+        | undefined;
       if (subscriptionId) {
-        await supabase
-          .from("subscriptions")
-          .update({ status: "past_due", stripe_event_id: event.id })
-          .eq("stripe_subscription_id", subscriptionId);
+        await db
+          .update(subscriptions)
+          .set({ status: "past_due", stripeEventId: event.id })
+          .where(eq(subscriptions.stripeSubscriptionId, subscriptionId));
       }
       break;
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
-      await supabase
-        .from("subscriptions")
-        .update({ status: "canceled", stripe_event_id: event.id })
-        .eq("stripe_subscription_id", subscription.id);
+      await db
+        .update(subscriptions)
+        .set({ status: "canceled", stripeEventId: event.id })
+        .where(eq(subscriptions.stripeSubscriptionId, subscription.id));
       break;
     }
     default:

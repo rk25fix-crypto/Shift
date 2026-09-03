@@ -2,15 +2,15 @@
 
 ## Context(なぜこの計画か)
 
-現状の `/home/user/Shift` は、2つの独立した単体HTMLファイル(`index.html`:保育園早出シフトメーカー、`shift4.html`:シフト作成アプリV7)だけで構成されたプロトタイプ。どちらもCDN読み込みのフロントエンドのみで、サーバー・DB・認証・課金・テスト・デプロイ設定が一切なく、ブラウザのlocalStorageにデータを溜めるだけの「一人・一ブラウザ」用ツール。
+現状の `/home/user/Shift` は、2つの独立した単体HTMLファイル(`index.html`:保育園早出シフトメーカー、`shift4.html`:シフト作成アプリV7)だけで構成されたプロトタイプだった。どちらもCDN読み込みのフロントエンドのみで、サーバー・DB・認証・課金・テスト・デプロイ設定が一切なく、ブラウザのlocalStorageにデータを溜めるだけの「一人・一ブラウザ」用ツール。
 
-ユーザーの狙いは「パソコンを使わない店舗・施設の管理者が、iPhoneだけでシフトを組めて、それを複数事業所に月額課金で販売する」こと。つまり今の2ファイルは機能・UXの参考資料であって、そのまま拡張する土台にはならない。マルチテナントSaaS化・iPhone向けUI再設計・課金導線の追加がまとめて必要になるため、実質ゼロからの構築(グリーンフィールド)として計画する。
+ユーザーの狙いは「パソコンを使わない店舗・施設の管理者が、iPhoneだけでシフトを組めて、それを複数事業所に月額課金で販売する」こと。Phase 0〜Phase 1a(下記)でNext.js + Supabaseによる実装を完了させ、PR #1として提出済み。その後、**Shift単体の都合ではなく、今後複数の小規模Webアプリを開発・販売していく際の共通インフラ基盤として、Cloudflare Workers + D1へ切り替える方針転換**があった(2026-09-03)。
 
 決定済み事項(ユーザー確認済み):
-1. **配布形態**: まずPWA(Safariの「ホーム画面に追加」)で提供。ネイティブiOSアプリは将来検討、今回のアーキテクチャはCapacitorなどで後からラップできる形にしておく。
+1. **配布形態**: まずPWA(Safariの「ホーム画面に追加」)で提供。ネイティブiOSアプリは将来検討。
 2. **販売モデル**: 複数事業所向けB2B SaaS、月額課金(Stripe)。事業所ごとにデータ完全分離。
 3. **機能ベース**: `index.html`のシンプルさ + `shift4.html`の交代申請・給与概算・労基アラートを合わせて再設計。
-4. **インフラ**: Vercel + Supabase を採用。ユーザーは既にCloudflareアカウント(Workers/D1)を持っているが、確認したところD1は2つともテーブル数0で実質未使用だった。今回の最大リスクである「事業所間のデータ分離」をDB層(Postgres RLS)で強制できることを優先し、Cloudflareは今回はDNS/ドメイン管理や将来のR2活用に限定する(詳細は技術スタック節の「採用しなかった選択肢と理由」参照)。
+4. **インフラ(2026-09-03 最終決定)**: **Cloudflare Workers + D1**。詳細な経緯・理由は「インフラ方針の変遷」節を参照。全プロジェクト共通の方針として `~/.claude/CLAUDE.md` にも反映する(「共通指針ドキュメント」節参照)。
 5. **認証方式**: メールOTP(6桁コード)入力方式を主導線にする。マジックリンクは補助。理由: iOSでは「ホーム画面に追加したPWA」と「Safari」はCookie/localStorageを共有しないため、メールのリンクをタップするとSafariでログインしてしまい、ホーム画面のPWA本体は未ログインのままになる事故が起きる。非IT管理者の初回体験が壊れるため、PWA内で完結するOTP入力を主導線にする。
 
 ## 3C分析:このアプリならではの価値(2026-09-02 追記)
@@ -42,151 +42,174 @@ Phase 0(基盤構築)完了・PR #1オープン後、Phase 1a着手前に「他�
 
 Sources: [BOXIL Magazine 保育業界向け勤怠管理](https://boxil.jp/mag/a7980/), [Airシフト公式](https://airregi.jp/shift/), [起業LOG SaaS Airシフト解説](https://kigyolog.com/tool.php?id=766), [CoDMON シフト管理](https://www.codmon.com/service/shift/), [BOXIL Magazine シフト管理費用相場](https://boxil.jp/mag/a8368/), [TRYETING シフト作成が面倒](https://www.tryeting.jp/column/1489/)
 
-## 技術スタック
+## インフラ方針の変遷(経緯の記録)
+
+このプロジェクトのインフラ選定は3段階で変化した。将来「なぜ今の構成なのか」を追えるよう経緯を残す。
+
+1. **当初(Phase 0時点)**: Vercel + Supabase(Postgres + Auth + RLS)を採用。理由は「事業所間データ漏洩」という最大リスクをDB層のRow-Level Securityで構造的に防げること。Cloudflare D1はRLS相当の機能がなく、テナント分離をアプリコードの規律だけに委ねることになるため不採用と判断した。
+2. **1回目の再検討(Phase 1a完了後)**: 「使われていない間の運用コストを避けたい」という要望を受け、Cloudflare一本化を再検討。調査の結果、D1のRLS非対応は変わらず、DBはSupabase維持と判断。ただし「Vercel Hobbyは商用利用禁止だがCloudflare Workers Freeにはその縛りがない」という非対称性が判明し、**ホスティングのみCloudflareへ**という折衷案を検討していた。
+3. **最終決定(2026-09-03)**: ユーザーから、Shift単体ではなく**今後複数の小規模Webアプリを開発・販売していく事業戦略全体の共通基盤**として「Cloudflare Workers + D1」を採用する方針が示された。狙いは、多数の小さなアプリを低固定費で市場投入し、当たったアプリにリソースを集中する戦略(詳細は「共通指針ドキュメント」節、および `~/.claude/CLAUDE.md` 参照)。D1にRLSが無いという弱点は変わらないが、**「1アプリ=1 D1」+「アプリ内はorg_idで分離、必須の分離テストを整備」**という設計で構造的リスクを許容範囲まで下げる方針。Shiftはこの方針を最初に適用する実証プロジェクトとなる。
+
+## 共通指針ドキュメント(全プロジェクト共通)
+
+ユーザーから提示された「アプリ公開基盤の方針:Cloudflare Workers + D1」は、Shiftに限らない全プロジェクト共通の設計指針のため、`~/.claude/CLAUDE.md`(ユーザーレベルのグローバル指示ファイル)に書き込む。内容の骨子:
+
+- 今後の小規模Webアプリは原則 **Cloudflare Workers + D1** を共通基盤とする。
+- **1アプリ = 1 D1 Database**。アプリ間のデータ漏洩をDBレベルで物理的に防ぐ。
+- アプリ内部は `org_id` で顧客(テナント)を分離する。D1にRLSが無いため、org_idの付け忘れによる顧客間データ漏洩対策(共通設計・テスト方法)を実装前に必ず決める。
+- より高い分離が必要な顧客(大企業向け等)が出てきた場合は、**顧客ごとD1**(Database-per-tenant)へ個別に昇格する。ただしWorkerあたりのD1 Binding数には上限があるため、数千〜数万顧客規模になったら別アーキテクチャ(Workers for Platforms等)を再検討する。最初から大規模想定の複雑設計はしない。
+- D1のPaidプランにはTime Travel(過去30日の任意時点復元)が含まれ、誤操作からの復旧手段になる。将来的にはR2へのSQL Export定期保存も検討。
+- Next.jsをCloudflare Workers上で動かす場合はCloudflare推奨の `vinext`(現時点でベータ)を使う。Vercel専用API・Node.js専用APIへの依存を避け、`npx vinext check` 等で互換性を確認する運用ルールを徹底する。
+
+**注意(このセッション固有)**: 今回の作業はリモートの使い捨てコンテナ上で行っており、`~/.claude/CLAUDE.md` がこのセッション/環境をまたいで永続化される保証はない(コンテナ自体が非アクティブ後に破棄される)。ユーザーが他のプロジェクトのセッションでも確実にこの方針を参照したい場合は、後日ローカル環境の `~/.claude/CLAUDE.md` に同内容を反映するか、専用の「開発標準」リポジトリを作ってそこにコミットし、各プロジェクトのCLAUDE.mdから参照する形を推奨する。この点はユーザーへの実装完了報告時に明示的に伝える。
+
+## 技術スタック(2026-09-03 更新: Cloudflare版)
 
 | レイヤー | 選定 | 理由 |
 |---|---|---|
-| フロントエンド | Next.js 16系(App Router)+ TypeScript、PWA化 | ルーティング・SSR・API RouteをNext.js一本でまかない、iPhone Safariでの初期表示を速くする。Tailwindは現プロトタイプから継続利用しやすい |
-| UI | Tailwind CSS + shadcn/ui | ボトムシート・モーダルなどアクセシブルな部品を軽量に導入 |
+| フロントエンド | Next.js 16系(App Router)+ TypeScript、PWA化。Cloudflare Workers上で `vinext`(ベータ)により動作 | ルーティング・SSR・API RouteをNext.js一本でまかない、iPhone Safariでの初期表示を速くする。Tailwindは現プロトタイプから継続利用しやすい |
+| UI | Tailwind CSS + shadcn/ui | ボトムシート・モーダルなどアクセシブルな部品を軽量に導入(Phase 1aでは軽量な自作コンポーネントのみ使用、実際の導入はまだ) |
 | 状態管理 | TanStack Query + Zustand | サーバー状態のキャッシュ・楽観的更新(タップでシフト割当など) |
-| バックエンド/DB/認証 | **Supabase**(Postgres + Auth + Row-Level Security、東京リージョン) | マルチテナントのデータ分離をRLSで実現でき、ソロ開発でも運用負荷が低い。シフト割当は本質的にリレーショナルなのでFirestoreより相性が良い |
-| ホスティング | Vercel(フロント、Function リージョンも東京`hnd1`に固定)+ Supabase(DB)。**Phase 1a〜1.5(無料パイロット)はどちらも無料枠のまま運用**し、Phase 2で課金を開始するタイミングでVercel Pro($20/月)+ Supabase Pro($25/月、計$45/月)へ切り替える | Next.jsの標準デプロイ先、DB運用がほぼ不要。無料枠のVercel Hobbyは商用利用不可・Supabase Freeは7日間アクセスがないと自動停止するため、実際に課金する顧客が使う段階(Phase 2以降)ではPro化が前提。裏を返せば、収益が発生する前にこのコストを負担する必要はない |
-| 課金 | Stripe Billing(Checkout + Customer Portal + Webhook) | PCI対応を自前でやらずに済み、解約もセルフサーブにできる(非IT管理者からの問い合わせを減らせる) |
-| メール送信 | Resend等のカスタムSMTP | Supabase組み込みSMTPは送信数の上限が厳しく、OTPメールが届かず「ログインできない」事故になりうるため、Phase 0の時点で自前SMTPに切り替える |
-| PWA | `@serwist/next`(Workbox後継。`next-pwa`は長期未メンテのため不採用) | オフラインキャッシュ・インストール導線 |
-| 監視 | Sentry(エラー監視)+ 外形監視(UptimeRobot等) | 非IT顧客からの「動かない」という問い合わせより先に不具合に気づく仕組み |
+| バックエンド/DB | **Cloudflare D1**(SQLite、Shift専用の1 Database)+ **Drizzle ORM** | 「1アプリ=1 D1」の共通方針に従う。Drizzleは型安全なクエリビルダで、Better AuthのD1連携にも必須(直接のd1Adapterは提供終了、Drizzle/Kysely経由が前提) |
+| 認証 | **Better Auth**(`drizzleAdapter(db, { provider: "sqlite" })`)+ `email-otp` プラグイン | Supabase Authが使えなくなるため自前運用に切り替え。email-otpプラグインで6桁コードのメールログインを維持でき、UI(`components/auth/OtpForm.tsx`等)はほぼそのまま流用できる見込み |
+| ホスティング | Cloudflare Workers(Paid、最低$5/月〜、10,000,000リクエスト・30,000,000 CPU ms込み) | 無料プランに商用利用禁止の縛りがなく、低トラフィックの間は実質無料に近い。従量課金なので「アプリを増やしても固定費が比例して増えない」戦略に合う |
+| 課金 | Stripe Billing(Checkout + Customer Portal + Webhook) | PCI対応を自前でやらずに済み、解約もセルフサーブにできる。WebhookはWorkers環境向けに `constructEventAsync` + SubtleCryptoProviderを使う(Node crypto依存の同期版`constructEvent`はWorkersで動かない) |
+| メール送信 | Resend | Better Authのemail-otpプラグインからメール送信フック経由で呼び出す |
+| PWA | `@serwist/next`(Workbox後継) | オフラインキャッシュ・インストール導線。Cloudflare Workers上でのService Worker配信も問題なく機能する想定(移行時に要確認) |
+| 監視 | Sentry(Cloudflare Workers向けSDK)+ 外形監視(UptimeRobot等) | 非IT顧客からの「動かない」という問い合わせより先に不具合に気づく仕組み |
+| バックアップ | D1 Time Travel(Paidで過去30日の任意時点復元) | 誤DELETE・誤UPDATE・マイグレーション失敗からの復旧手段。将来的にR2へのSQL Export定期保存も検討 |
+| 定期処理 | Cloudflare Cron Triggers | トライアル催促メールなど(旧: Supabase pg_cron) |
 | テスト | Vitest(ユニット)+ Playwright(E2E、iPhone 13ビューポート) | モバイルUIの崩れをCIで検知。ただしWebKitエミュレーションはsafe-area・standalone判定・Cookie分離など実際のiOS挙動までは再現しないため、実機UATと役割分担する |
 
-### 採用しなかった選択肢と理由(Cloudflare比較)
+### この構成を選んだ理由の要点
 
-ユーザーは既にCloudflareアカウント(Workers/D1)を持っているため、Cloudflare一本化(Workers+D1+Better Auth)も比較検討した。結論は**Vercel+Supabase維持**。
+- **D1のRLS非対応は変わらない事実**として認識した上で、「1アプリ=1 D1」+「org_idによるアプリ内分離」+「分離を強制するデータアクセス層と自動テスト」で構造的リスクを許容範囲に抑える(詳細は「テナント分離モデル(D1版)」節)。
+- Vercel+Supabaseは技術的には優れているが、月$45という固定費が「複数の小規模アプリを低コストで市場投入し、当たったものにリソースを集中する」という事業戦略とは相性が悪いと判断。
+- Phase 0実装時点から「移植可能性の原則」(`@vercel/*`不使用・Node専用API不使用・DBアクセスを抽象化)を守っていたため、この移行は白紙からの再実装ではなく、データアクセス層と認証層の差し替えで済む見込み(詳細は「既存実装の移行計画」節)。
 
-- **D1(SQLite)不採用の理由**: D1にはRow-Level Security相当の機能がなく、テナント分離は「全クエリに `WHERE organization_id = ?` を書き忘れない」というアプリコード側の規律だけに依存する。今回の計画で最大の正しさリスクと位置付けている「事業所間データ漏洩」を防ぐには、DB層で強制できるPostgresのRLSの方が構造的に安全。また対話型トランザクション(読んでから判断して書く)が使えず、「その日に同じスタッフの割当が無ければ挿入」のようなロジックが書きにくい。
-- **Cloudflare Pages/Workers(ホスティング)不採用の理由**: Cloudflare公式のNext.js対応はPages→OpenNextアダプタ→vinext(ベータ)と方針が変遷中で、フレームワークとホストの間にベータ段階のアダプタ層を挟むことになる。Next.js開発元のVercelに置く方が、アップデート追従コストが構造的に低い。
-- **Cloudflare Access不採用の理由**: 社内向けZero Trust製品であり、B2B SaaSの顧客(複数事業所のスタッフ)向けログインには設計思想が合わない。
-- **Better Auth自前運用不採用の理由**: セッション管理・メール送信・レート制限・トークンローテーションを自前運用することになり、ソロ開発者が「本業(シフトUI)以外のコード」を大量に抱えることになる。Supabase Authなら大半がマネージドで済む。
-- **費用差は判断要因にしない**: Vercel Pro+Supabase Pro ≒ 月$45、Cloudflare一本化なら ≒ 月$5。差はあるが事業所1件分の月額で吸収できる規模であり、漏洩事故や開発時間のコストの方がずっと大きい。
-- **将来の見直し条件**: Vercelの費用が事業所数に対して不釣り合いに増えた場合、または管理画面をCloudflareに統一したい強い理由ができた場合は、「Cloudflare Workers/Pagesでホスティングしつつ、DBはSupabase Postgresを`supabase-js`(PostgREST)経由で使う」ハイブリッド構成への移行を検討する。
+## テナント分離モデル(D1版)
 
-### 移植可能性の原則
+RLSが無い前提で、org_idの付け忘れによる事業所間データ漏洩を防ぐための構造的な仕組み:
 
-将来Cloudflareへ寄せ直す余地を残すため、実装時は以下を守る:
-- `@vercel/*` 系のVercel専用API(KV/Blob/Analytics/Cron)は使わない。
-- Node.js専用API(`fs`等)をリクエスト処理経路で使わない。
-- DBアクセスは`supabase-js`(PostgREST経由)に統一し、Hyperdrive等の直結プーリングには依存しない。
-- 定期処理(トライアル催促メールなど)はSupabase側のpg_cron + Edge Functionで実装し、Vercel Cron専用機能には依存しない。
+1. **生のD1バインディング/Drizzleクライアントを直接importさせない**。全データアクセスは `lib/db/scopedClient.ts` の `getScopedDb(organizationId)` のようなヘルパー経由に限定し、`eslint.config.mjs` の `no-restricted-imports` で `lib/db/raw.ts`(生クライアント)への直接importを禁止する(Supabase版で `service_role` キーを制限していたのと同じパターンを踏襲)。
+2. **スコープ付きクライアントは、テナント紐付けテーブルへの操作時に必ずorganization_idをWHERE句に含める**よう関数シグネチャで強制する(例: `getScopedDb(organizationId).staff.list()` のように、呼び出し側がorganization_idを渡さないと使えない設計にする。生のSQL文字列を書かせず、Drizzleのクエリビルダで組み立てる)。
+3. **クロステナント分離の自動テストを必須にする**(Supabase版の「RLS分離テスト」をアプリ層に移した形): 2事業所分のテストデータを用意し、事業所Aのスコープ付きクライアントが事業所Bの`staff`/`shift_assignments`/`subscriptions`を一切取得・更新できないことをVitestで担保する。CIで毎回実行し、新しいテーブル・クエリを追加するたびにこのテストスイートも拡張する運用ルールとする。
+4. **時給などの機密列は引き続きテーブル分離**(`staff` と `staff_compensation` を分ける方針は維持)。owner以外がowner専用データにアクセスできないことも同じテストスイートで確認する。
+5. **より高い分離が必要になった場合**(将来的に大企業顧客が入る等)は、当該顧客だけDatabase-per-tenant(専用D1)へ昇格する。Shiftの現在のターゲット(小規模店舗・保育園)ではorg_id分離で妥当と判断し、最初から全顧客を個別D1にはしない。
 
-## マルチテナント・認証モデル
+### 認証モデル
 
-- **共有スキーマ + RLS方式**(テナントごとにDBを分けない)。全テナント紐付けテーブルに `organization_id` を持たせ、Postgresの Row-Level Security で「自分の事業所のデータしか見えない」を強制する。
-- ロールは `owner`(契約・全権限)/ `staff`(自分のシフト閲覧・休み希望・交代申請)から開始。`admin`は後回し。
-- ログインは**メールOTP(6桁コード、パスワードなし)を主導線**とし、PWA内で完結させる。マジックリンクは補助手段(PCで使う場合など)に位置付ける。理由: iOSのホーム画面PWAとSafariはCookie/localStorageを共有しないため、メールのリンクを踏むとSafari側でログインし、PWA本体は未ログインのままになる事故を避けるため。サインアップ時にNext.jsのサーバーアクション経由で `organizations` / `memberships` / 14日間トライアルの `subscriptions` を自動作成。
-- **サーバー側の全リクエスト経路は `@supabase/ssr` のユーザーJWT付きクライアントを使う**。RLSを完全にバイパスする `service_role` キーの使用は Stripe Webhookと管理バッチ処理のみに限定し、ESLintのimport制限で機械的に禁止する(RLSは「サーバーコードが必ずユーザーJWT付きクライアントを使う」規約とセットでないと成立しないため)。
-- RLSポリシーは `memberships` へのサブクエリを`(select auth.uid())`でラップし、`memberships(user_id, organization_id)`にインデックスを張る(定石の性能対策)。
-- 1ユーザーが複数事業所(法人が保育園2園など)を持つケースは`memberships`で表現可能。UI上の事業所スイッチャーはPhase 3で追加。
+- Better Auth(`drizzleAdapter` + `email-otp`プラグイン)でメールOTP(6桁コード)ログインを実装。UI(`components/auth/OtpForm.tsx`、`SignupForm.tsx`)は現状のフローを維持し、内部の呼び出し先だけSupabase Auth APIからBetter Auth APIに差し替える。
+- ロールは `owner`(契約・全権限)/ `staff`(自分のシフト閲覧・休み希望・交代申請)から開始。`admin`は後回し(Supabase版の設計を踏襲)。
+- サインアップ時にorganizations/memberships/14日間トライアルのsubscriptionsを1トランザクションで作成する処理は、Better AuthのDBフック(`databaseHooks`)またはサーバーアクション内で明示的に実装する(Supabase版では1つのPostgres関数で担保していたが、D1では複数INSERTを明示的なトランザクションでまとめる)。
+- 1ユーザーが複数事業所を持つケースは `memberships` で表現可能。UI上の事業所スイッチャーはPhase 3で追加(変更なし)。
 
-## データモデル(要点)
+## データモデル(D1/SQLite版)
 
-`organizations`(事業所。`timezone`既定`Asia/Tokyo`、勤務ルール設定[連勤上限日数・週/月上限時間・休憩ルール]も持つ)/ `memberships`(ユーザー↔事業所↔ロール)/ `staff`(スタッフ台帳:氏名・固定休・不可シフトなど)/ `staff_compensation`(**時給などの給与情報のみ別テーブルに分離、ownerロールのみ読み取り可**)/ `shift_types`(シフト種別:コード・開始/終了時刻[翌日跨ぎ対応]・休憩分数・必須/均等フラグ)/ `shift_assignments`(**スタッフ×日付×シフト種別を1行ずつ**、1日複数シフトを`UNIQUE(staff_id, date, shift_type_id)`で許容。両プロトタイプのJSブロブ管理から脱却し労基チェック・給与集計をSQLで可能にする)/ `time_off_requests`(休み希望)/ `swap_requests`(交代申請)/ `subscriptions`(Stripe連携状態、`stripe_event_id`でWebhook冪等化)/ `audit_log`(変更履歴、労務トラブル対策)。
+Postgres版からの主な変更点(SQLiteの制約に合わせる):
 
-**時給を`staff`から分離する理由**: RLSは行単位のポリシーのため、`staff`テーブルに時給を持たせたまま将来スタッフ本人ログインを導入すると、「自分の事業所のstaff行は読める」ポリシーで同僚の時給まで見えてしまう事故が起きる。列レベルで機密度が違うデータは最初からテーブルを分ける。
+- 配列型(`fixed_days_off smallint[]`、`unavailable_shift_type_ids uuid[]` 等)→ **JSON文字列を格納するTEXTカラム**に変更し、アプリ側でJSON.parse/JSON.stringify。
+- UUID主キー(`gen_random_uuid()`)→ **TEXTカラム + `crypto.randomUUID()`**(Workers環境で標準利用可能)をアプリ側のデフォルト値として使用。
+- `timestamptz` → **Unixエポック秒のINTEGERカラム**(Drizzleの `mode: 'timestamp'` で自動変換)。
+- `check (...)` 制約はSQLiteでも利用可能なため、ロール・ステータスのenum的な制約はそのまま踏襲できる。
+- 外部キー制約はD1で `PRAGMA foreign_keys = ON` を有効化した上で利用する。
 
-`shift_assignments` に `status: draft/confirmed` を持たせ、自動生成機能は一旦「下書き」を作って管理者が確認→確定する流れにする(両プロトタイプは自動生成が即座に本番データを上書きしてしまう弱点があった)。同時編集(管理者2人が同じ日を編集)はMVPではLast-Write-Winsを許容する(将来`updated_at`による楽観ロックを検討)。
+テーブル構成そのもの(`organizations` / `memberships` / `staff` / `staff_compensation` / `shift_types` / `shift_assignments` / `time_off_requests` / `swap_requests` / `subscriptions` / `audit_log`)はSupabase版から変更しない。理由・設計意図(時給の列分離、shift_assignmentsの一意制約、draft/confirmedフロー等)もそのまま引き継ぐ。RLSポリシー相当の記述はスキーマから削除し、「テナント分離モデル(D1版)」節のスコープ付きクライアント+テストで代替する。
 
 ## iPhone向けUIの核心方針(最大のUXリスク)
 
+*(インフラ変更の影響を受けないため変更なし)*
+
 両プロトタイプは「スタッフ×日付」の横に長いテーブルで、375px幅のiPhone画面では実質使えない。**1つのグリッドで全画面サイズに対応しようとせず、用途別に画面を分ける**:
 
-1. **今日ビュー(デフォルト画面)**: 1日分をスタッフの縦リストで表示、シフトはタップ可能なチップ。タップでボトムシートが開いてシフト種別を選択(`shift4.html`のモーダル方式を主要導線に格上げ)。日付は左右スワイプ/矢印で移動。
-2. **スタッフビュー**: 1人分の月間シフトを縦スクロールで確認、**「勤務ルール警告」**(連勤上限・週/月上限時間・休憩不足、事業所ごとに設定可能)をここに表示。「労基法違反」という表現はUI上使わず、「法令判断を代替するものではない」旨を利用規約とUIに明記する(6連勤・160時間は労基法の定める基準そのものではなく慣習的な目安のため、断定表現を避ける)。
+1. **今日ビュー(デフォルト画面)**: 1日分をスタッフの縦リストで表示、シフトはタップ可能なチップ。タップでボトムシートが開いてシフト種別を選択。日付は左右スワイプ/矢印で移動。(Phase 1aで実装済み)
+2. **スタッフビュー**: 1人分の月間シフトを縦スクロールで確認、**「勤務ルール警告」**(連勤上限・週/月上限時間・休憩不足、事業所ごとに設定可能)をここに表示。「労基法違反」という表現はUI上使わず、「法令判断を代替するものではない」旨を利用規約とUIに明記する。
 3. **週グリッド**: 7日分のみの横スクロールテーブル(月間フルグリッドは印刷/PDF専用に格下げ)。
-4. **印刷ビュー**: `/print/[orgId]/[month]` を別ルートとして用意し、インタラクティブUIと印刷レイアウトの要求を分離。
-5. **下部タブナビゲーション**(iOS標準の親指到達性): 今日/スタッフ/週表示/交代/設定。
+4. **印刷ビュー**: `/print/[orgId]/[month]` を別ルートとして用意。(Phase 1aで実装済み)
+5. **下部タブナビゲーション**(iOS標準の親指到達性): 今日/スタッフ/週表示/交代/設定。(Phase 1aで実装済み)
 6. 入力は「タップでチップ選択」中心、`<select>` プルダウンやテーブル内インライン入力は極力避け、タップ領域44px以上を確保。
 
-Figmaモックアップまたは`design`スキルでの画面確認を実装前に一度挟み、Playwrightの `devices['iPhone 13']` エミュレーションをCIに入れて「気づいたら横長テーブルに戻っていた」regressionを防ぐ。ただしWebKitエミュレーションはsafe-area・standalone判定・100vh問題・Cookie分離といったiOS実機固有の挙動までは再現しないため、これらはUATチェックリストの必須項目として実機で確認する。
+Playwrightの `devices['iPhone 13']` エミュレーションをCIに入れて「気づいたら横長テーブルに戻っていた」regressionを防ぐ(Phase 0で導入済み)。WebKitエミュレーションの限界(safe-area・standalone判定・Cookie分離)は実機UATで補う。
 
 ## PWA固有の対応
 
-- `public/manifest.json` + `apple-touch-icon` / `apple-mobile-web-app-capable` メタタグ(iOSはmanifest.jsonだけでは不十分)。
-- サービスワーカーはAPI通信を network-first(シフトデータが古いまま見えるのは業務上まずい)、静的資産は cache-first。
-- iOS Safariには`beforeinstallprompt`が無いため、**「共有ボタン→ホーム画面に追加」を教える自作オンボーディング画面**を初回ログイン時に表示する(ここを作らないと非IT管理者はPWAをインストールできない)。ログイン自体もメールOTP方式でPWA内で完結させ、インストール導線と一体で設計する。
-- Web Pushは iOS 16.4+ でホーム画面インストール済みPWAのみ対応 → 交代申請の承認通知などに使えるが、Phase 3以降に後回し。Supabase自体はPush配信を行わないため、VAPID+`web-push`ライブラリ(またはOneSignal等)による配信サーバーが別途必要になる点をPhase 3の見積もりに含める。
+*(インフラ変更の影響を受けないため変更なし、Phase 0で実装済み)*
+
+- `public/manifest.json` + `apple-touch-icon` / `apple-mobile-web-app-capable` メタタグ。
+- サービスワーカーはAPI通信を network-first、静的資産は cache-first。
+- iOS Safariには`beforeinstallprompt`が無いため、「共有ボタン→ホーム画面に追加」を教える自作オンボーディング画面を初回ログイン時に表示。
+- Web Pushは iOS 16.4+ でホーム画面インストール済みPWAのみ対応。配信サーバー(VAPID+`web-push`)が別途必要な点はPhase 3の見積もりに含める。
 
 ## 課金フロー(Stripe)
 
-サインアップ時はカード情報なしで14日間トライアル開始 → トライアル終了時点で未契約なら閲覧のみ(書き込み不可)に制限 → トライアル残り5日を切ったらアプリ内バナー表示 → `/billing` からStripe Checkoutへ(**月額・年額の2プランを用意**。年額は月額換算で割引し、キャッシュフロー安定と解約率低下を狙う。非IT層には従量課金より分かりやすい固定額を推奨)→ Webhookで `subscriptions` テーブルを更新(**イベントIDで冪等化**し、同一イベントの再送で二重更新されないようにする)→ 解約・カード変更はStripe Customer Portalへ誘導(問い合わせ対応の手間を削減)→ 支払い失敗/解約後もデータは読み取り専用で保持し、**保持期間(例:90日)を利用規約に明記した上で削除**する。
+サインアップ時はカード情報なしで14日間トライアル開始 → トライアル終了時点で未契約なら閲覧のみに制限 → トライアル残り5日を切ったらアプリ内バナー表示 → `/billing` からStripe Checkoutへ(月額・年額の2プランを用意)→ Webhookで `subscriptions` テーブルを更新(イベントIDで冪等化)→ 解約・カード変更はStripe Customer Portalへ誘導 → 支払い失敗/解約後もデータは読み取り専用で保持し、保持期間(例:90日)を利用規約に明記した上で削除する。
 
-**インフラコストと収益の対応関係**: Vercel Pro + Supabase Proの月$45は、Phase 2で最初の課金(トライアル終了後の契約)が発生するタイミングで初めて必要になる出費であり、無料パイロット期間(Phase 1a〜1.5)には発生しない。事業所1件あたりの月額を$45よりやや高めに設定できれば、契約1件でインフラコストを回収できる計算になる(具体的な価格は市場調査の結果、競合の相場が1人あたり月100〜300円/店舗課金月2,000〜5,000円であることを踏まえてPhase 2で確定)。
+**Workers環境でのWebhook実装の注意**: `stripe.webhooks.constructEvent`(同期版)はNode.js cryptoに依存するためCloudflare Workersでは動作しない。`constructEventAsync` + `Stripe.createSubtleCryptoProvider()` を使う。
 
-日本でのB2B SaaS販売に向けた法務・商習慣対応もPhase 2に含める: 特定商取引法に基づく表記・利用規約・プライバシーポリシーの整備(スタッフ氏名・時給を扱うため個人情報の取り扱いも明記)、Stripeの請求書/領収書に**適格請求書(インボイス)登録番号**を載せる設定、小規模事業所向けに**銀行振込(請求書払い)**をカード決済の代替として検討。トライアル催促などの定期処理はSupabase側のpg_cron + Edge Functionで実装する(移植可能性の原則に沿う)。
+**インフラコストと収益の対応関係**: Cloudflare Workers Paid($5/月〜、従量課金)は「アプリ数ではなく実際の利用量に応じて増える」構造のため、Phase 1a〜1.5の低トラフィック期は実質無料に近い。事業所1件あたりの月額を明確な黒字ラインに設定できれば、少数の契約でインフラコストを回収できる計算になる(具体的な価格は市場調査の結果を踏まえてPhase 2で確定)。
 
-## リポジトリ再構成
+日本でのB2B SaaS販売に向けた法務・商習慣対応もPhase 2に含める: 特定商取引法に基づく表記・利用規約・プライバシーポリシーの整備、Stripeの請求書/領収書に適格請求書(インボイス)登録番号を載せる設定、小規模事業所向けに銀行振込(請求書払い)をカード決済の代替として検討。トライアル催促などの定期処理はCloudflare Cron Triggersで実装する。
 
-既存の2ファイルは最初のコミットで `legacy/index.html` / `legacy/shift4.html` として `git mv` し、参考資料として保持(削除はPhase 4で機能パリティ確認後)。新規実装は以下の構成(アプリが1つしかない現状ではモノレポ階層は不要なため、`apps/web/`は使わずリポジトリ直下に配置。将来Capacitorなどで2つ目のパッケージが必要になった時点で分ける):
+## リポジトリ再構成(D1版)
 
 ```
 app/(marketing)/    … ランディング・料金ページ
 app/(auth)/         … login/signup(メールOTP主導線、マジックリンクは補助)
-app/(app)/today/    … 今日ビュー(モバイル既定画面)
-app/(app)/staff/    … スタッフ管理
+app/(app)/today/    … 今日ビュー(モバイル既定画面)         [Phase 1a実装済み]
+app/(app)/staff/    … スタッフ管理                          [Phase 1a実装済み]
+app/(app)/settings/shift-types/ … シフト種別設定            [Phase 1a実装済み]
 app/(app)/week/     … 週グリッド
 app/(app)/swaps/    … 交代申請
 app/(app)/billing/  … Stripeポータル導線
-app/print/[orgId]/[month]/ … 印刷専用ビュー
-lib/shift-generator/  … 自動割当ロジック(両プロトタイプの良い所を統合、ブラウザ側で動く純関数として実装)
-lib/labor-rules.ts    … 事業所設定(連勤上限・週/月上限時間・休憩ルール)駆動の勤務ルール判定。月またぎ連勤・翌日跨ぎシフトの時間計算も対応
-supabase/migrations/  … スキーマ + RLSポリシー
+app/print/[orgId]/[month]/ … 印刷専用ビュー                 [Phase 1a実装済み]
+lib/shift-generator/  … 自動割当ロジック(純関数、変更なし)
+lib/labor-rules.ts    … 勤務ルール判定ロジック(純関数、変更なし)
+lib/db/                … D1 + Drizzleクライアント。scopedClient.ts(スコープ付きアクセス)とraw.ts(生クライアント、import制限対象)を分離
+lib/auth/               … Better Auth設定・セッションヘルパー(旧 lib/supabase/*)
+drizzle/                … スキーマ定義 + D1マイグレーション(旧 supabase/migrations/)
 docs/legal/            … 特定商取引法に基づく表記・利用規約・プライバシーポリシーの草稿
 e2e/                    … Playwright(iPhoneビューポート)
+wrangler.jsonc          … Cloudflare Workers設定(D1バインディング等)
 ```
+
+## 既存実装(Phase 0〜1a)の移行計画
+
+Phase 0〜1aはSupabase版としてPR #1で実装済み(CI green)。以下のマッピングでCloudflare D1版へ移行する。UIコンポーネント・server actionsの外側のシグネチャ(引数・戻り値)はほぼ変更せず、データアクセス部分の中身だけ差し替える設計とし、作り直しの範囲を最小化する。
+
+| 旧(Supabase版) | 新(D1版) | 備考 |
+|---|---|---|
+| `supabase/migrations/0001_init.sql` | `drizzle/schema.ts` + `wrangler d1 migrations` | 配列→JSON TEXT、UUID→TEXT+crypto.randomUUID()、timestamptz→Unixエポック秒に変換 |
+| `supabase/config.toml`, `supabase/templates/` | 削除 | Supabaseプロジェクト自体を使わないため |
+| `lib/supabase/client.ts` / `server.ts` / `service.ts` / `middleware.ts` / `types.ts` | `lib/auth/*`(Better Auth)+ `lib/db/*`(Drizzle) | service_role相当の「生クライアント制限」はlib/db/raw.tsへのimport制限として引き継ぐ |
+| `lib/org/current.ts`(`getCurrentMembership()`) | 同名・同シグネチャで維持、内部実装のみBetter Authのセッション取得に差し替え | 呼び出し側(各ページ・アクション)は変更不要 |
+| `lib/staff/*`, `lib/shift-types/*`, `lib/shifts/*`(actions/queries) | 同名・同シグネチャで維持、内部のSupabaseクエリをDrizzleクエリに差し替え | |
+| `eslint.config.mjs` の `service_role` import制限 | `lib/db/raw.ts` への直接import制限に置き換え | 考え方は同じ、対象パスのみ変更 |
+| `proxy.ts`(セッションリフレッシュmiddleware) | Better Authのセッションmiddlewareに置き換え | |
+| `app/api/stripe/webhook/route.ts` | `constructEventAsync` + SubtleCryptoProviderに変更 | |
+| `next.config.ts` | vinext向けビルド設定を追加、`wrangler.jsonc` 新設(D1バインディング定義) | |
+
+この移行はPhase 1aの機能(スタッフ管理・シフト種別設定・今日ビュー・印刷ビュー)を作り直すものではなく、土台の差し替えとして扱う。**Phase 1.5のパイロット運用を始める前に完了させる**(Supabase版は一度も実プロジェクトに接続していないため、二重移行を避けられる)。
+
+**D1データベースの作成について**: このセッションにはCloudflare Developer Platform向けのMCPツールが利用可能で、D1データベースの作成・一覧取得等をエージェントから直接実行できる(Supabaseではプロジェクト作成をユーザーに依頼する必要があったのと対照的)。「1アプリ=1 D1」の命名規則に従い、`shift-db`(本番)・`shift-db-preview`(開発/プレビュー用)としてユーザーの既存Cloudflareアカウント上に新規作成する(ユーザーの既存の `sync-db` / `sync-db-preview` とは別アプリのため独立させる)。
 
 ## フェーズロードマップ
 
-- **Phase 0 基盤**: Next.js/Supabaseのひな型(東京リージョン、Vercel Functionリージョンも`hnd1`に固定)、スキーマ+RLS、メールOTP認証、カスタムSMTP(Resend等)、Sentry+外形監視、`service_role`使用禁止のESLintルール、2ファイルを`legacy/`へ移動、CI(lint/typecheck/test)、Vercel接続。
-- **Phase 1a コアMVP(手動割当)**: 今日ビュー(手動でのシフト割当)、スタッフCRUD、シフト種別設定、印刷ビュー、PWA基本(manifest/icons/SW、iOSインストール導線)。まずここまでを最短で動くものにする。
-- **Phase 1.5 パイロット(新設)**: Phase 1a完了時点で知り合いの1〜2事業所に無料で使ってもらい、今日ビューの操作感・印刷物を実運用で検証する。「お金を払ってでも使いたい」という反応が出てから次に進む。
+- **Phase 0 基盤**: ✅ 完了(Supabase版として実装、PR #1オープン、CI green)。
+- **Phase 1a コアMVP(手動割当)**: ✅ 完了(Supabase版として実装、PR #1に統合済み)。今日ビュー・スタッフCRUD・シフト種別設定・印刷ビュー・PWA基本。
+- **Phase 1a.5 インフラ移行(Cloudflare D1 + Better Auth)**: 🔜 次のステップ。上記「既存実装の移行計画」に従い、Supabase依存をCloudflare D1 + Drizzle + Better Authへ全面差し替え。D1データベース作成、スキーマ移行、認証差し替え、テナント分離テストの新規実装、Cloudflare Workersへのデプロイ確認までを含む。
+- **Phase 1.5 パイロット**: Phase 1a.5完了後、知り合いの1〜2事業所に無料で使ってもらい、今日ビューの操作感・印刷物を実運用で検証する。「お金を払ってでも使いたい」という反応が出てから次に進む。
 - **Phase 1b コアMVP(自動化)**: 週グリッド、休み希望、自動生成(下書き→確定)、未充足シフト警告、勤務ルール警告(連勤・週/月上限時間)。
-- **Phase 2 課金・オンボーディング**: Stripe Checkout/Webhook(冪等化)/Customer Portal、トライアル期限管理・催促メール(pg_cron)、ランディング/料金ページ、特定商取引法表記・利用規約・プライバシーポリシー、インボイス登録番号設定。
+- **Phase 2 課金・オンボーディング**: Stripe Checkout/Webhook(冪等化)/Customer Portal、トライアル期限管理・催促メール(Cloudflare Cron Triggers)、ランディング/料金ページ、特定商取引法表記・利用規約・プライバシーポリシー、インボイス登録番号設定。
 - **Phase 3 磨き込み**: 交代申請ワークフロー、給与概算(深夜・時間外・法定休日の割増対応)・グラフ、Web Push通知(配信サーバー含む)、スタッフ本人ログイン(必要ならLINEログインも検討)、事業所スイッチャー、変更履歴。
 - **Phase 4 実顧客ベータ**: Phase 1.5のパイロット事業所を有料化する形で本格運用、フィードバック収集の仕組み、実データで見つかった穴を修正、`legacy/*.html`の整理。
-- **Phase 5 ネイティブ検討**: Capacitorでのラップ vs React Native再構築を、ベータの手応え次第で検討(現アーキテクチャはCapacitor移行を妨げない設計にしておく)。
-
-## Phase 1a 実装計画(2026-09-02 追記)
-
-Phase 0(基盤構築)は完了し、PR #1としてオープン済み(CI green)。3C分析(上記)の結果、交代申請・給与概算・労務ルール警告は差別化ポイントと確認できたが、**Phase 1aの範囲は当初予定通り「手動割当のみ」で進める**(ユーザー確認済み)。差別化機能はPhase 1.5のパイロット運用でのフィードバックを見てからPhase 1bで着手する。
-
-**Supabaseプロジェクトは現時点で未作成**。ユーザーの意向により、まずコードだけ実装を進め、実プロジェクトのURL/APIキーは後日受け取る。そのため今回の実装は lint/typecheck/単体テスト/ビルドで検証し、実DBとの結合確認・RLS分離テストはキー受領後に別途行う(PRの説明にもその旨を明記する)。
-
-### スコープ
-
-Phase 0の `app/(app)/*` 配下のプレースホルダーページを、実際にSupabaseへ読み書きする機能に置き換える:
-
-1. **組織コンテキスト解決**: `lib/org/current.ts` に `getCurrentMembership()` を新設(`memberships` を `auth.uid()` で引き、`{organizationId, role}` を返す)。Phase 1aの全ページ/サーバーアクションはここを共通で使い、organization_id解決ロジックを重複させない。
-2. **スタッフ管理**: `lib/staff/actions.ts`(createStaff/updateStaff/deactivateStaff/setCompensation)、`lib/staff/queries.ts`(getStaffList等)。時給は`staff_compensation`への別書き込みとし、owner以外には表示しない(RLSと合わせてUI側でも非表示にする)。UIは `components/staff/StaffList.tsx` / `StaffForm.tsx`(フルスクリーンフォーム、テーブル内インライン編集はしない方針を継続)。`app/(app)/staff/page.tsx` を置き換え。
-3. **シフト種別設定**: `lib/shift-types/actions.ts` / `queries.ts`。UIは `components/shift-types/ShiftTypeList.tsx` / `ShiftTypeForm.tsx`。`app/(app)/settings/shift-types/page.tsx` を置き換え。
-4. **今日ビュー(手動割当)**: `lib/shifts/actions.ts`(assignShift/unassignShift、`shift_assignments`に`status='confirmed'`で直接書き込み。下書き→確定フローはPhase 1bの自動生成と同時に導入)、`lib/shifts/queries.ts`(指定日の割当取得)。UIは `components/shift/DayList.tsx` / `ShiftChip.tsx` / `AssignShiftSheet.tsx`(タップでボトムシートを開いてシフト種別選択。shadcn/uiは導入せず、Tailwindだけの軽量な自作コンポーネントで実装し、Phase 1bでより複雑な部品が要る時に導入を再検討)。日付移動はまず `?date=YYYY-MM-DD` のprev/nextリンクで実装し、スワイプ操作は後回し。`app/(app)/today/page.tsx` を置き換え。
-5. **スタッフ詳細**: `app/(app)/staff/[staffId]/page.tsx` に、氏名+その月のシフト一覧を表示する簡易版を実装(勤務ルール警告の表示はPhase 1b)。
-6. **印刷ビュー**: `app/print/[orgId]/[month]/page.tsx` に、月間フルグリッド(スタッフ×日付の表)と印刷用スタイルを実装。
-
-### PR分割
-
-Phase 0のPRが68ファイルと大きくなった反省を踏まえ、Phase 1aは2つのPRに分ける:
-- **PR A**: 組織コンテキスト解決 + スタッフ管理 + シフト種別設定
-- **PR B**: 今日ビュー(手動割当)+ スタッフ詳細 + 印刷ビュー(PR Aのデータモデルに依存するため後続)
-
-### 検証(このタイミングでできる範囲)
-
-- 各PRで `npm run lint` / `npm run typecheck` / `npm run typecheck:worker` / `npm run test` / `npm run build` を実行し、Phase 0で整備したCIを通す。
-- サーバーアクション・クエリのorganization_id解決ロジックなど、DBなしでテストできるロジックはVitestでカバー。
-- 実際のSupabaseプロジェクトのURL/APIキーを受け取り次第、`.env.local`に設定→`supabase db push`(または`supabase link`+マイグレーション適用)→RLS分離テスト(下記「検証方法」節)とE2Eのデータ結合部分を追加で実施し、別途報告する。
+- **Phase 5 ネイティブ検討**: Capacitorでのラップ vs React Native再構築を、ベータの手応え次第で検討。
 
 ## 検証方法
 
-- Phase 0でVitest/Playwrightのひな形と最小スモークテストをまず通し、CI配線自体を先に確認する。
-- ユニットテスト最優先箇所: `lib/shift-generator`(制約を守った割当になっているか)と `lib/labor-rules`(連勤・週/月上限時間の判定、**月をまたぐ連勤の検出**、**翌日跨ぎシフトの労働時間計算**)、給与計算 — ここのバグは非IT管理者には気づけない実害(給与ミス)に直結するため。
-- **RLS分離テスト**は必須: 2事業所分のテストデータを作り、事業所Aのクライアントが事業所Bの`staff`/`shift_assignments`/`subscriptions`を一切読み書きできないことを自動テストで担保する(マルチテナントSaaSとして最重要の正しさ)。加えて、**`service_role`キーを使わない通常クライアントで実行すること**、および**staffロールのユーザーが他人の時給(`staff_compensation`)を読めないこと**(列レベルの分離)も同じテストスイートで確認する。
-- E2E(Playwright、`devices['iPhone 13']`)で「サインアップ→事業所作成→スタッフ登録→今日ビューでシフト割当→自動生成→確定→印刷」の一連をCIで毎PR実行し、横長テーブルへの先祖返りを機械的に防ぐ。ただしWebKitエミュレーションの限界(safe-area・standalone判定・Cookie分離)は実機UATで補う(下記)。
-- Stripeはテストモード+CLI(`stripe listen`)でCheckout→Webhook→`subscriptions`更新を通しで確認してから本番切り替え。加えて**同一Webhookイベントの重複送信テスト**(`subscriptions`が二重更新されないこと)を行う。
-- 各フェーズの最後に実機iPhoneでの手動UATチェックリスト(`docs/uat-checklist.md`、両プロトタイプの機能一覧を元に作成)を回し、自動テストでは拾えないタップ感覚・スワイプの使い勝手、および**ホーム画面に追加した状態(standalone)でのメールOTPログインが正しく完結するか**を確認する。
+- ユニットテスト最優先箇所: `lib/shift-generator`と `lib/labor-rules`(連勤・週/月上限時間の判定、月をまたぐ連勤の検出、翌日跨ぎシフトの労働時間計算)、給与計算 — ここのバグは非IT管理者には気づけない実害(給与ミス)に直結するため。(Phase 0〜1aで実装・テスト済み、インフラ変更の影響を受けない)
+- **テナント分離テストは必須**(RLS分離テストのD1版): 2事業所分のテストデータを作り、事業所Aのスコープ付きクライアントが事業所Bの`staff`/`shift_assignments`/`subscriptions`を一切読み書きできないことを自動テストで担保する。加えて、**`lib/db/raw.ts`(生クライアント)を使わない通常のスコープ付きクライアントで実行すること**、および**staffロールのユーザーが他人の時給(`staff_compensation`)を読めないこと**(列レベルの分離、アプリ側のアクセス制御で担保)も同じテストスイートで確認する。
+- E2E(Playwright、`devices['iPhone 13']`)で「サインアップ→事業所作成→スタッフ登録→今日ビューでシフト割当→自動生成→確定→印刷」の一連をCIで毎PR実行し、横長テーブルへの先祖返りを機械的に防ぐ。
+- Stripeはテストモード+CLI(`stripe listen`)でCheckout→Webhook→`subscriptions`更新を通しで確認してから本番切り替え。加えて同一Webhookイベントの重複送信テスト(`subscriptions`が二重更新されないこと)を行う。
+- **Cloudflare Workersへの実デプロイ確認**: `vinext`がベータのため、ローカルビルドが通るだけでなく実際に`wrangler deploy`(またはプレビュー環境)でデプロイし、主要画面(ログイン・今日ビュー・印刷)が動作することを確認する。
+- 各フェーズの最後に実機iPhoneでの手動UATチェックリスト(`docs/uat-checklist.md`)を回し、自動テストでは拾えないタップ感覚・スワイプの使い勝手、および**ホーム画面に追加した状態(standalone)でのメールOTPログインが正しく完結するか**を確認する。
 - Phase 4は実顧客の利用そのものが最大の検証。どの画面が実際に使われているか軽量なアクセス記録を仕込み、Phase 3以降の優先度判断に使う。

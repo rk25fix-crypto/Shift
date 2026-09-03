@@ -8,7 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
-    exclude: ["node_modules", ".next", "e2e"],
+    // *.d1.test.ts runs under vitest.d1.config.ts (real Workers runtime via
+    // Miniflare) — jsdom can't resolve `cloudflare:workers`/`cloudflare:test`.
+    exclude: ["node_modules", ".next", "e2e", "**/*.d1.test.ts"],
   },
   resolve: {
     alias: {

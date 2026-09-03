@@ -1,4 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
+import { auth } from "@/lib/auth/config";
+import { getRawDb } from "@/lib/db/raw";
+import { memberships } from "@/drizzle/schema";
 
 export type MembershipRole = "owner" | "admin" | "staff";
 
@@ -12,24 +16,23 @@ export interface CurrentMembership {
  * more than one organization (docs/plan.md, "1ユーザーが複数事業所を持つ
  * ケース"), but the org switcher is Phase 3 — until then every page/action
  * uses the first membership found, via this single shared lookup.
+ *
+ * Queries `memberships` directly via the raw D1 client (allow-listed in
+ * eslint.config.mjs) because resolving organizationId is the one thing this
+ * function must do before any org-scoped access is possible.
  */
 export async function getCurrentMembership(): Promise<CurrentMembership | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return null;
 
-  const { data } = await supabase
-    .from("memberships")
-    .select("organization_id, role")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const db = getRawDb();
+  const [row] = await db
+    .select({ organizationId: memberships.organizationId, role: memberships.role })
+    .from(memberships)
+    .where(eq(memberships.userId, session.user.id))
+    .limit(1);
 
-  if (!data) return null;
-
-  return { organizationId: data.organization_id, role: data.role };
+  return row ?? null;
 }
 
 /** Same as getCurrentMembership(), but throws for pages/actions that require an org context to render at all. */

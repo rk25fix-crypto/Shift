@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
+import { and, asc, eq } from "drizzle-orm";
+import { getScopedDb } from "@/lib/db/scopedClient";
+import { shiftTypes } from "@/drizzle/schema";
 
 export interface ShiftTypeRecord {
   id: string;
@@ -15,64 +17,44 @@ export interface ShiftTypeRecord {
 }
 
 export async function listShiftTypes(organizationId: string): Promise<ShiftTypeRecord[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("shift_types")
-    .select(
-      "id, code, name, start_time, end_time, crosses_midnight, break_minutes, is_required, is_balanced, color_key, sort_order",
-    )
-    .eq("organization_id", organizationId)
-    .order("sort_order")
-    .order("code");
+  const { db } = getScopedDb(organizationId);
+  const rows = await db
+    .select()
+    .from(shiftTypes)
+    .where(eq(shiftTypes.organizationId, organizationId))
+    .orderBy(asc(shiftTypes.sortOrder), asc(shiftTypes.code));
 
-  if (error) throw new Error(error.message);
-
-  return (data ?? []).map(toShiftTypeRecord);
+  return rows.map(toShiftTypeRecord);
 }
 
 export async function getShiftType(
   organizationId: string,
   shiftTypeId: string,
 ): Promise<ShiftTypeRecord | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("shift_types")
-    .select(
-      "id, code, name, start_time, end_time, crosses_midnight, break_minutes, is_required, is_balanced, color_key, sort_order",
-    )
-    .eq("organization_id", organizationId)
-    .eq("id", shiftTypeId)
-    .maybeSingle();
+  const { db } = getScopedDb(organizationId);
+  const [row] = await db
+    .select()
+    .from(shiftTypes)
+    .where(and(eq(shiftTypes.organizationId, organizationId), eq(shiftTypes.id, shiftTypeId)))
+    .limit(1);
 
-  return data ? toShiftTypeRecord(data) : null;
+  return row ? toShiftTypeRecord(row) : null;
 }
 
-interface ShiftTypeRow {
-  id: string;
-  code: string;
-  name: string;
-  start_time: string;
-  end_time: string;
-  crosses_midnight: boolean;
-  break_minutes: number;
-  is_required: boolean;
-  is_balanced: boolean;
-  color_key: string | null;
-  sort_order: number;
-}
+type ShiftTypeRow = typeof shiftTypes.$inferSelect;
 
 function toShiftTypeRecord(row: ShiftTypeRow): ShiftTypeRecord {
   return {
     id: row.id,
     code: row.code,
     name: row.name,
-    startTime: row.start_time.slice(0, 5),
-    endTime: row.end_time.slice(0, 5),
-    crossesMidnight: row.crosses_midnight,
-    breakMinutes: row.break_minutes,
-    isRequired: row.is_required,
-    isBalanced: row.is_balanced,
-    colorKey: row.color_key,
-    sortOrder: row.sort_order,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    crossesMidnight: row.crossesMidnight,
+    breakMinutes: row.breakMinutes,
+    isRequired: row.isRequired,
+    isBalanced: row.isBalanced,
+    colorKey: row.colorKey,
+    sortOrder: row.sortOrder,
   };
 }

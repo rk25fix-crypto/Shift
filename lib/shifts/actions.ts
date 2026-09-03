@@ -1,8 +1,12 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getScopedDb } from "@/lib/db/scopedClient";
 import { isManager, requireCurrentMembership } from "@/lib/org/current";
+import { auth } from "@/lib/auth/config";
+import { shiftAssignments } from "@/drizzle/schema";
 
 /**
  * Sets (or clears, when shiftTypeId is null) the one shift a staff member
@@ -21,32 +25,33 @@ export async function assignShift(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const supabase = await createClient();
+  const { db } = getScopedDb(organizationId);
 
-  const { error: deleteError } = await supabase
-    .from("shift_assignments")
-    .delete()
-    .eq("organization_id", organizationId)
-    .eq("staff_id", staffId)
-    .eq("date", date);
-
-  if (deleteError) return { error: deleteError.message };
+  await db
+    .delete(shiftAssignments)
+    .where(
+      and(
+        eq(shiftAssignments.organizationId, organizationId),
+        eq(shiftAssignments.staffId, staffId),
+        eq(shiftAssignments.date, date),
+      ),
+    );
 
   if (shiftTypeId) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const session = await auth.api.getSession({ headers: await headers() });
 
-    const { error: insertError } = await supabase.from("shift_assignments").insert({
-      organization_id: organizationId,
-      staff_id: staffId,
-      shift_type_id: shiftTypeId,
-      date,
-      status: "confirmed",
-      created_by: user?.id ?? null,
-    });
-
-    if (insertError) return { error: insertError.message };
+    try {
+      await db.insert(shiftAssignments).values({
+        organizationId,
+        staffId,
+        shiftTypeId,
+        date,
+        status: "confirmed",
+        createdBy: session?.user.id ?? null,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+    }
   }
 
   revalidatePath("/today");
