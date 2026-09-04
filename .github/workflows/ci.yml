@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets us verify the deploy job works before merging, without waiting for
+  # a push to main.
+  workflow_dispatch:
 
 jobs:
   lint-typecheck-test:
