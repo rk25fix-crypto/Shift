@@ -24,10 +24,10 @@
 ```bash
 npm install
 cp .env.example .env.local   # 値を埋める(下記参照)
-npm run dev:vinext           # Cloudflare Workersランタイムで起動(D1バインディング込み)
+npm run dev                  # Cloudflare Workersランタイムで起動(D1バインディング込み)
 ```
 
-http://localhost:3000 で起動します。`npm run dev`(素のNext.js)も動きますが、D1バインディングやWorkers固有の挙動は再現されないため、実装確認は `dev:vinext` を使ってください。
+http://localhost:3000 で起動します。`npm run dev:next`(素のNext.js)も動きますが、D1バインディングやWorkers固有の挙動は再現されないため、実装確認は `npm run dev` を使ってください。
 
 ### 環境変数
 
@@ -52,16 +52,17 @@ npx wrangler d1 migrations apply shift-db --remote     # 本番D1へ適用(要�
 ## テスト
 
 ```bash
-npm run lint              # ESLint(生のD1クライアントimportの制限ルールも含む)
-npm run typecheck         # アプリ本体
-npm run typecheck:worker  # app/sw.ts(Service Worker、dom libと衝突するため別tsconfig)
-npm run test              # Vitest(ユニットテスト)
-npm run e2e                # Playwright(iPhone 13ビューポートでのE2E)
+npm run lint       # ESLint(生のD1クライアントimportの制限ルールも含む)
+npm run typecheck  # アプリ本体
+npm run test       # Vitest(ユニットテスト)
+npm run test:d1    # テナント分離テスト(実際のMiniflare D1に対して実行)
+npm run e2e        # Playwright(iPhone 13ビューポートでのE2E)
+npm run build      # 本番ビルド(vinext build)
 ```
 
-`lib/labor-rules.ts`(勤務ルール警告の判定)と `lib/shift-generator/`(自動生成アルゴリズム)は特にテストを厚くしています。バグが給与ミスや不当な警告に直結する箇所のため([`docs/plan.md`](./docs/plan.md) 検証方法節参照)。`lib/db/scopedClient.isolation.test.ts` はテナント分離の自動テストで、マルチテナントSaaSとして最重要の正しさを担保します。
+`lib/labor-rules.ts`(勤務ルール警告の判定)と `lib/shift-generator/`(自動生成アルゴリズム)は特にテストを厚くしています。バグが給与ミスや不当な警告に直結する箇所のため([`docs/plan.md`](./docs/plan.md) 検証方法節参照)。`lib/db/scopedClient.isolation.d1.test.ts` はテナント分離の自動テストで、マルチテナントSaaSとして最重要の正しさを担保します。
 
-CIは `.github/workflows/ci.yml` で lint / typecheck / test / e2e を毎PR実行します。
+CIは `.github/workflows/ci.yml` で lint / typecheck / test / test:d1 / build / e2e を毎PR実行します。デプロイ手順は [`DEPLOY.md`](./DEPLOY.md) を参照してください。
 
 ## ディレクトリ構成
 
