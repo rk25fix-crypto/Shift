@@ -1,9 +1,46 @@
-node_modules/
-.env
-.env.local
-dist/
-build/
-out/
-.next/
-coverage/
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+/playwright-report
+/test-results
+
+# next.js
+/.next/
+/out/
+
+# serwist-generated service worker (built by `next build`)
+/public/sw.js
+/public/sw.js.map
+/public/swe-worker-*.js
+
+# production
+/build
+/dist
+
+# misc
 .DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (never commit secrets)
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+.vinext/
+.wrangler/
