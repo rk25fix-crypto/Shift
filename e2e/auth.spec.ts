@@ -7,7 +7,7 @@ test.describe("auth", () => {
   }, testInfo) => {
     await signUpNewOrg(page, {
       businessName: "テスト保育園",
-      email: `e2e-${testInfo.testId}@example.com`,
+      email: `e2e-${testInfo.testId}-${crypto.randomUUID()}@example.com`,
     });
 
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

@@ -42,4 +42,23 @@ export async function signUpNewOrg(
   await page.getByRole("button", { name: "始める" }).click();
 
   await page.waitForURL("/today");
+
+  // InstallPromptBanner (components/ui/InstallPromptBanner.tsx) is `fixed`
+  // at the viewport bottom for any iOS-flavored user agent — which includes
+  // Playwright's iPhone 13 emulation — and stays there regardless of
+  // scrolling. On a long form (e.g. /settings/shift-types/new) it can cover
+  // the submit button entirely, so every test that fills a form dismisses
+  // it here once, the same way a real user would tap "閉じる" to get it out
+  // of the way. It renders client-side only (the server snapshot is always
+  // "hidden", see the component), appearing after hydration — a plain
+  // isVisible() check can race that and see nothing, so wait for it instead
+  // of just polling once. Not required to appear (a non-iOS project would
+  // never show it), so a timeout here is a no-op, not a failure.
+  const dismissBanner = page.getByRole("button", { name: "閉じる" });
+  const bannerAppeared = await dismissBanner
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true, () => false);
+  if (bannerAppeared) {
+    await dismissBanner.click();
+  }
 }

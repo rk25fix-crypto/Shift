@@ -53,6 +53,29 @@ export async function getAssignmentsForStaffMonth(
   return rows.map(toAssignment);
 }
 
+/** Confirmed assignments for `[startDate, endDateExclusive)` — used by the week view. */
+export async function getAssignmentsForOrgRange(
+  organizationId: string,
+  startDate: string,
+  endDateExclusive: string,
+): Promise<Assignment[]> {
+  const { db } = getScopedDb(organizationId);
+  const rows = await db
+    .select()
+    .from(shiftAssignments)
+    .where(
+      and(
+        eq(shiftAssignments.organizationId, organizationId),
+        eq(shiftAssignments.status, "confirmed"),
+        gte(shiftAssignments.date, startDate),
+        lt(shiftAssignments.date, endDateExclusive),
+      ),
+    )
+    .orderBy(shiftAssignments.date);
+
+  return rows.map(toAssignment);
+}
+
 export async function getAssignmentsForOrgMonth(
   organizationId: string,
   month: string,

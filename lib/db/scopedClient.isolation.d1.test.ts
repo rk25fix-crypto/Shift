@@ -5,7 +5,8 @@ import { getScopedDb } from "@/lib/db/scopedClient";
 import { organizations, staff, staffCompensation, shiftTypes, subscriptions } from "@/drizzle/schema";
 import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
-import { getAssignmentsForDate } from "@/lib/shifts/queries";
+import { getAssignmentsForDate, getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { setShiftAssignment } from "@/lib/shifts/assign";
 import { shiftAssignments } from "@/drizzle/schema";
 
 /**
@@ -21,6 +22,7 @@ let orgB: { id: string };
 let staffA: { id: string };
 let staffB: { id: string };
 let shiftTypeA: { id: string };
+let shiftTypeB: { id: string };
 
 beforeAll(async () => {
   const db = getRawDb();
@@ -52,6 +54,18 @@ beforeAll(async () => {
     .insert(shiftTypes)
     .values({
       organizationId: orgA.id,
+      code: "早1",
+      name: "早番",
+      startTime: "07:00",
+      endTime: "16:00",
+      isRequired: true,
+    })
+    .returning({ id: shiftTypes.id });
+
+  [shiftTypeB] = await db
+    .insert(shiftTypes)
+    .values({
+      organizationId: orgB.id,
       code: "早1",
       name: "早番",
       startTime: "07:00",
@@ -107,11 +121,11 @@ describe("staff_compensation isolation (column-level, RLS-equivalent)", () => {
 
 describe("shift_types isolation", () => {
   it("listShiftTypes never returns another org's shift types", async () => {
-    const result = await listShiftTypes(orgA.id);
-    expect(result.map((t) => t.id)).toEqual([shiftTypeA.id]);
+    const resultA = await listShiftTypes(orgA.id);
+    expect(resultA.map((t) => t.id)).toEqual([shiftTypeA.id]);
 
-    const emptyForOrgB = await listShiftTypes(orgB.id);
-    expect(emptyForOrgB).toEqual([]);
+    const resultB = await listShiftTypes(orgB.id);
+    expect(resultB.map((t) => t.id)).toEqual([shiftTypeB.id]);
   });
 });
 
@@ -123,6 +137,42 @@ describe("shift_assignments isolation", () => {
 
     const resultB = await getAssignmentsForDate(orgB.id, "2026-06-01");
     expect(resultB).toHaveLength(0);
+  });
+
+  it("getAssignmentsForOrgRange never returns another org's assignments", async () => {
+    const resultA = await getAssignmentsForOrgRange(orgA.id, "2026-05-30", "2026-06-06");
+    expect(resultA).toHaveLength(1);
+    expect(resultA[0].staffId).toBe(staffA.id);
+
+    const resultB = await getAssignmentsForOrgRange(orgB.id, "2026-05-30", "2026-06-06");
+    expect(resultB).toHaveLength(0);
+  });
+});
+
+describe("setShiftAssignment isolation (write path)", () => {
+  it("rejects another org's staffId instead of writing a cross-tenant row", async () => {
+    const result = await setShiftAssignment(orgA.id, null, staffB.id, "2026-06-15", shiftTypeA.id);
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const rows = await getAssignmentsForDate(orgA.id, "2026-06-15");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("rejects another org's shiftTypeId instead of writing a cross-tenant row", async () => {
+    const result = await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-16", shiftTypeB.id);
+    expect(result.error).toBe("シフト種別が見つかりません");
+
+    const rows = await getAssignmentsForDate(orgA.id, "2026-06-16");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("accepts the caller's own org's staffId and shiftTypeId", async () => {
+    const result = await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-17", shiftTypeA.id);
+    expect(result.error).toBeNull();
+
+    const rows = await getAssignmentsForDate(orgA.id, "2026-06-17");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].staffId).toBe(staffA.id);
   });
 });
 

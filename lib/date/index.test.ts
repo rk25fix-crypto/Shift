@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   datesInMonth,
+  datesInWeek,
   formatDateJapanese,
   isValidIsoDate,
+  mondayOf,
   monthOf,
   nextMonth,
 } from "@/lib/date";
@@ -72,6 +74,39 @@ describe("isValidIsoDate", () => {
   it("rejects garbage input", () => {
     expect(isValidIsoDate("not-a-date")).toBe(false);
     expect(isValidIsoDate("")).toBe(false);
+  });
+});
+
+describe("mondayOf", () => {
+  it("returns the same date when it's already a Monday", () => {
+    // 2026-06-01 is a Monday.
+    expect(mondayOf("2026-06-01")).toBe("2026-06-01");
+  });
+
+  it("rolls back to Monday from mid-week", () => {
+    expect(mondayOf("2026-06-04")).toBe("2026-06-01");
+  });
+
+  it("rolls back to Monday from Sunday", () => {
+    expect(mondayOf("2026-06-07")).toBe("2026-06-01");
+  });
+
+  it("rolls back across a month boundary", () => {
+    expect(mondayOf("2026-07-01")).toBe("2026-06-29");
+  });
+});
+
+describe("datesInWeek", () => {
+  it("lists all 7 dates starting from Monday", () => {
+    expect(datesInWeek("2026-06-01")).toEqual([
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+      "2026-06-05",
+      "2026-06-06",
+      "2026-06-07",
+    ]);
   });
 });
 

@@ -44,6 +44,19 @@ export function monthOf(date: string): string {
   return date.slice(0, 7);
 }
 
+/** The Monday (YYYY-MM-DD) starting the ISO week (Mon-Sun) containing `date`. */
+export function mondayOf(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const daysSinceMonday = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - daysSinceMonday);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The 7 ISO dates (YYYY-MM-DD) of the week starting on `monday`, in order. */
+export function datesInWeek(monday: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+
 /** All ISO dates (YYYY-MM-DD) in the given YYYY-MM month, in order. */
 export function datesInMonth(yearMonth: string): string[] {
   const [year, month] = yearMonth.split("-").map(Number);
