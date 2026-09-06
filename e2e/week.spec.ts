@@ -51,4 +51,44 @@ test.describe("week view", () => {
     await page.reload();
     await expect(page.getByRole("button", { name: "―" })).toHaveCount(7);
   });
+
+  test("requesting a day off persists across a reload and is cleared by assigning a shift", async ({
+    page,
+  }, testInfo) => {
+    await signUpNewOrg(page, {
+      businessName: "テスト保育園",
+      email: `e2e-week-timeoff-${testInfo.testId}-${crypto.randomUUID()}@example.com`,
+    });
+
+    await page.goto("/staff/new");
+    await page.getByLabel("氏名").fill("テスト花子");
+    await page.getByRole("button", { name: "追加する" }).click();
+    await page.waitForURL("/staff");
+
+    await page.goto("/settings/shift-types/new");
+    await page.getByLabel("コード(例: 早1)").fill("早1");
+    await page.getByLabel("名称(例: 早番1)").fill("早番");
+    await page.getByRole("button", { name: "追加する" }).click();
+    await page.waitForURL("/settings/shift-types");
+
+    await page.goto("/week");
+    await page.getByRole("button", { name: "―" }).first().click();
+    await page.getByRole("button", { name: "休み希望" }).click();
+    await expect(page.getByText("さんのシフト")).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "休" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "―" })).toHaveCount(6);
+
+    // Assigning a real shift on a day off should clear the time-off request
+    // (they're mutually exclusive — see lib/shifts/assign.ts).
+    await page.getByRole("button", { name: "休" }).click();
+    await page.getByRole("button", { name: /^早1/ }).click();
+    await expect(page.getByText("さんのシフト")).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "早1" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "休" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "―" })).toHaveCount(6);
+  });
 });

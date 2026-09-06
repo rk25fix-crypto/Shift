@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { isValidIsoDate } from "@/lib/date";
-import { shiftAssignments, shiftTypes, staff } from "@/drizzle/schema";
+import { shiftAssignments, shiftTypes, staff, timeOffRequests } from "@/drizzle/schema";
 
 /**
  * Core of assignShift (lib/shifts/actions.ts), extracted so it can be
@@ -17,6 +17,10 @@ import { shiftAssignments, shiftTypes, staff } from "@/drizzle/schema";
  * shift" for Phase 1a/1b, matching lib/shift-generator's one-shift-a-day
  * model. A manager who genuinely needs a second shift that day can add it
  * once the data model's multi-shift support gets a UI.
+ *
+ * A day can't be both a scheduled shift and a requested day off, so this
+ * also clears any lib/time-off/set.ts time-off request for the same
+ * staff+date (the mirror of setTimeOffRequest clearing any shift there).
  */
 export async function setShiftAssignment(
   organizationId: string,
@@ -48,15 +52,26 @@ export async function setShiftAssignment(
     if (!shiftTypeRow) return { error: "シフト種別が見つかりません" };
   }
 
-  await db
-    .delete(shiftAssignments)
-    .where(
-      and(
-        eq(shiftAssignments.organizationId, organizationId),
-        eq(shiftAssignments.staffId, staffId),
-        eq(shiftAssignments.date, date),
+  await db.batch([
+    db
+      .delete(shiftAssignments)
+      .where(
+        and(
+          eq(shiftAssignments.organizationId, organizationId),
+          eq(shiftAssignments.staffId, staffId),
+          eq(shiftAssignments.date, date),
+        ),
       ),
-    );
+    db
+      .delete(timeOffRequests)
+      .where(
+        and(
+          eq(timeOffRequests.organizationId, organizationId),
+          eq(timeOffRequests.staffId, staffId),
+          eq(timeOffRequests.date, date),
+        ),
+      ),
+  ]);
 
   if (shiftTypeId) {
     try {

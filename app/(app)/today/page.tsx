@@ -3,6 +3,7 @@ import { requireCurrentMembership } from "@/lib/org/current";
 import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForDate } from "@/lib/shifts/queries";
+import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { addDays, formatDateJapanese, isValidIsoDate, todayInTimezone } from "@/lib/date";
 import { DayList } from "@/components/shift/DayList";
 import { DateJumpForm } from "@/components/shift/DateJumpForm";
@@ -16,10 +17,11 @@ export default async function TodayPage({
   const date = dateParam && isValidIsoDate(dateParam) ? dateParam : todayInTimezone();
 
   const { organizationId } = await requireCurrentMembership();
-  const [staff, shiftTypes, assignments] = await Promise.all([
+  const [staff, shiftTypes, assignments, timeOff] = await Promise.all([
     listStaff(organizationId),
     listShiftTypes(organizationId),
     getAssignmentsForDate(organizationId, date),
+    listTimeOffForRange(organizationId, date, addDays(date, 1)),
   ]);
 
   return (
@@ -42,7 +44,7 @@ export default async function TodayPage({
         </Link>
       </div>
       <DateJumpForm date={date} />
-      <DayList date={date} staff={staff} shiftTypes={shiftTypes} assignments={assignments} />
+      <DayList date={date} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { StaffRecord } from "@/lib/staff/queries";
 import type { ShiftTypeRecord } from "@/lib/shift-types/queries";
 import type { Assignment } from "@/lib/shifts/queries";
+import type { TimeOff } from "@/lib/time-off/queries";
 import { formatDateJapanese } from "@/lib/date";
 import { ShiftChip } from "@/components/shift/ShiftChip";
 import { AssignShiftSheet } from "@/components/shift/AssignShiftSheet";
@@ -13,10 +14,11 @@ interface WeekGridProps {
   staff: StaffRecord[];
   shiftTypes: ShiftTypeRecord[];
   assignments: Assignment[];
+  timeOff: TimeOff[];
 }
 
 /** 7-day × staff grid — a horizontally-scrollable week overview, unlike the Today view's single-date focus (docs/plan.md, "週グリッド"). */
-export function WeekGrid({ dates, staff, shiftTypes, assignments }: WeekGridProps) {
+export function WeekGrid({ dates, staff, shiftTypes, assignments, timeOff }: WeekGridProps) {
   const [openCell, setOpenCell] = useState<{ staffId: string; date: string } | null>(null);
 
   if (staff.length === 0) {
@@ -31,11 +33,13 @@ export function WeekGrid({ dates, staff, shiftTypes, assignments }: WeekGridProp
   const assignmentByStaffDate = new Map(
     assignments.map((a) => [`${a.staffId}|${a.date}`, a]),
   );
+  const timeOffByStaffDate = new Set(timeOff.map((t) => `${t.staffId}|${t.date}`));
 
   const openStaff = openCell ? staff.find((s) => s.id === openCell.staffId) : undefined;
   const openAssignment = openCell
     ? assignmentByStaffDate.get(`${openCell.staffId}|${openCell.date}`)
     : undefined;
+  const openIsTimeOff = openCell ? timeOffByStaffDate.has(`${openCell.staffId}|${openCell.date}`) : false;
 
   return (
     <>
@@ -60,12 +64,14 @@ export function WeekGrid({ dates, staff, shiftTypes, assignments }: WeekGridProp
                   {member.name}
                 </th>
                 {dates.map((date) => {
-                  const assignment = assignmentByStaffDate.get(`${member.id}|${date}`);
+                  const key = `${member.id}|${date}`;
+                  const assignment = assignmentByStaffDate.get(key);
                   const shiftType = assignment ? shiftTypeById.get(assignment.shiftTypeId) : undefined;
+                  const isTimeOff = !shiftType && timeOffByStaffDate.has(key);
                   return (
                     <td key={date} className="px-2 py-2 text-center">
                       <ShiftChip
-                        label={shiftType ? shiftType.code : "―"}
+                        label={shiftType ? shiftType.code : isTimeOff ? "休" : "―"}
                         isAssigned={Boolean(shiftType)}
                         onClick={() => setOpenCell({ staffId: member.id, date })}
                       />
@@ -83,6 +89,7 @@ export function WeekGrid({ dates, staff, shiftTypes, assignments }: WeekGridProp
           staffName={openStaff.name}
           date={openCell.date}
           currentShiftTypeId={openAssignment?.shiftTypeId ?? null}
+          isTimeOffRequested={openIsTimeOff}
           shiftTypes={shiftTypes}
           onClose={() => setOpenCell(null)}
         />

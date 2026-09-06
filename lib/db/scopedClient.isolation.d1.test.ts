@@ -7,6 +7,8 @@ import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForDate, getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { setShiftAssignment } from "@/lib/shifts/assign";
+import { listTimeOffForRange } from "@/lib/time-off/queries";
+import { setTimeOffRequest } from "@/lib/time-off/set";
 import { shiftAssignments } from "@/drizzle/schema";
 
 /**
@@ -173,6 +175,48 @@ describe("setShiftAssignment isolation (write path)", () => {
     const rows = await getAssignmentsForDate(orgA.id, "2026-06-17");
     expect(rows).toHaveLength(1);
     expect(rows[0].staffId).toBe(staffA.id);
+  });
+});
+
+describe("time_off_requests isolation", () => {
+  it("listTimeOffForRange never returns another org's time-off requests", async () => {
+    await setTimeOffRequest(orgA.id, staffA.id, "2026-06-20");
+
+    const resultA = await listTimeOffForRange(orgA.id, "2026-06-18", "2026-06-22");
+    expect(resultA).toEqual([{ staffId: staffA.id, date: "2026-06-20" }]);
+
+    const resultB = await listTimeOffForRange(orgB.id, "2026-06-18", "2026-06-22");
+    expect(resultB).toHaveLength(0);
+  });
+
+  it("setTimeOffRequest rejects another org's staffId instead of writing a cross-tenant row", async () => {
+    const result = await setTimeOffRequest(orgA.id, staffB.id, "2026-06-21");
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const rowsA = await listTimeOffForRange(orgA.id, "2026-06-21", "2026-06-22");
+    expect(rowsA).toHaveLength(0);
+    const rowsB = await listTimeOffForRange(orgB.id, "2026-06-21", "2026-06-22");
+    expect(rowsB).toHaveLength(0);
+  });
+
+  it("clears an existing shift assignment when a day off is requested for the same date", async () => {
+    await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-22", shiftTypeA.id);
+    await setTimeOffRequest(orgA.id, staffA.id, "2026-06-22");
+
+    const assignments = await getAssignmentsForDate(orgA.id, "2026-06-22");
+    expect(assignments).toHaveLength(0);
+    const timeOff = await listTimeOffForRange(orgA.id, "2026-06-22", "2026-06-23");
+    expect(timeOff).toEqual([{ staffId: staffA.id, date: "2026-06-22" }]);
+  });
+
+  it("clears an existing time-off request when a shift is assigned for the same date", async () => {
+    await setTimeOffRequest(orgA.id, staffA.id, "2026-06-23");
+    await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-23", shiftTypeA.id);
+
+    const timeOff = await listTimeOffForRange(orgA.id, "2026-06-23", "2026-06-24");
+    expect(timeOff).toHaveLength(0);
+    const assignments = await getAssignmentsForDate(orgA.id, "2026-06-23");
+    expect(assignments).toHaveLength(1);
   });
 });
 

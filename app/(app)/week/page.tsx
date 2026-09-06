@@ -3,6 +3,7 @@ import { requireCurrentMembership } from "@/lib/org/current";
 import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { addDays, datesInWeek, isValidIsoDate, mondayOf, todayInTimezone } from "@/lib/date";
 import { WeekGrid } from "@/components/shift/WeekGrid";
 
@@ -18,10 +19,11 @@ export default async function WeekPage({
   const dates = datesInWeek(monday);
 
   const { organizationId } = await requireCurrentMembership();
-  const [staff, shiftTypes, assignments] = await Promise.all([
+  const [staff, shiftTypes, assignments, timeOff] = await Promise.all([
     listStaff(organizationId),
     listShiftTypes(organizationId),
     getAssignmentsForOrgRange(organizationId, monday, addDays(monday, 7)),
+    listTimeOffForRange(organizationId, monday, addDays(monday, 7)),
   ]);
 
   return (
@@ -50,7 +52,7 @@ export default async function WeekPage({
           ›
         </Link>
       </div>
-      <WeekGrid dates={dates} staff={staff} shiftTypes={shiftTypes} assignments={assignments} />
+      <WeekGrid dates={dates} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
     </div>
   );
 }
