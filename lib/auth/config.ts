@@ -31,7 +31,12 @@ export const auth = betterAuth({
       expiresIn: 300, // 5 minutes
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") return;
-        await getResend().emails.send({
+        // TODO(temporary diagnostic logging): the resend SDK returns
+        // { data, error } rather than throwing on API-level failures, so a
+        // plain `await ... .send(...)` silently swallows the actual reason
+        // (invalid key, unverified domain, etc.) — log it explicitly until
+        // the OTP email is confirmed working end-to-end in production.
+        const result = await getResend().emails.send({
           // Resend's shared onboarding@resend.dev domain only delivers to
           // the account's own verified address until a custom domain is
           // added (https://resend.com/domains) — fine for the Phase 1a.5
@@ -42,6 +47,10 @@ export const auth = betterAuth({
           subject: "Shift ログインコード",
           html: `<p>Shift へのログインコードです。</p><p style="font-size:32px;font-weight:700;letter-spacing:0.2em;">${otp}</p><p>アプリに戻り、このコードを入力してください。有効期限は5分です。</p><p style="color:#6b7280;font-size:13px;">心当たりがない場合は、このメールを破棄してください。</p>`,
         });
+        if (result.error) {
+          console.error("[Shift] Resend send failed:", JSON.stringify(result.error));
+          throw new Error(`Resend send failed: ${result.error.message}`);
+        }
       },
     }),
     // Must be last — auto-forwards Set-Cookie headers from auth.api.* calls
