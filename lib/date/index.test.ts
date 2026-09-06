@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { addDays, datesInMonth, formatDateJapanese, monthOf, nextMonth } from "@/lib/date";
+import {
+  addDays,
+  datesInMonth,
+  formatDateJapanese,
+  isValidIsoDate,
+  monthOf,
+  nextMonth,
+} from "@/lib/date";
 
 describe("addDays", () => {
   it("adds days within a month", () => {
@@ -42,6 +49,29 @@ describe("datesInMonth", () => {
 
   it("handles February in a non-leap year", () => {
     expect(datesInMonth("2026-02")).toHaveLength(28);
+  });
+});
+
+describe("isValidIsoDate", () => {
+  it("accepts a real date", () => {
+    expect(isValidIsoDate("2026-06-01")).toBe(true);
+  });
+
+  it("accepts a leap-day date in a leap year", () => {
+    expect(isValidIsoDate("2028-02-29")).toBe(true);
+  });
+
+  it("rejects a nonexistent day of month", () => {
+    expect(isValidIsoDate("2026-02-30")).toBe(false);
+  });
+
+  it("rejects a nonexistent month", () => {
+    expect(isValidIsoDate("2026-13-01")).toBe(false);
+  });
+
+  it("rejects garbage input", () => {
+    expect(isValidIsoDate("not-a-date")).toBe(false);
+    expect(isValidIsoDate("")).toBe(false);
   });
 });
 
