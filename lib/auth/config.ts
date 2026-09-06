@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { emailOTP } from "better-auth/plugins/email-otp";
+import { testUtils } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { Resend } from "resend";
 import { getRawDb } from "@/lib/db/raw";
@@ -31,6 +32,12 @@ export const auth = betterAuth({
       expiresIn: 300, // 5 minutes
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") return;
+        // E2E/local dev only (ENABLE_TEST_UTILS is never set in the deployed
+        // Worker — it isn't in wrangler.jsonc's vars or a dashboard secret).
+        // testUtils({ captureOTP: true }) below already captured this code
+        // for app/api/test/otp/route.ts to read, so skip the real send —
+        // tests shouldn't need a live Resend API key.
+        if (process.env.ENABLE_TEST_UTILS === "true") return;
         // TODO(temporary diagnostic logging): the resend SDK returns
         // { data, error } rather than throwing on API-level failures, so a
         // plain `await ... .send(...)` silently swallows the actual reason
@@ -53,8 +60,20 @@ export const auth = betterAuth({
         }
       },
     }),
+    // Captures every generated OTP into an in-memory map keyed by email, so
+    // E2E tests can log in without a real inbox. Cheap and inert unless
+    // something calls ctx.test.getOTP() — only getTestOtp() below does that,
+    // and only app/api/test/otp/route.ts calls getTestOtp(), gated by the
+    // same ENABLE_TEST_UTILS check as above.
+    testUtils({ captureOTP: true }),
     // Must be last — auto-forwards Set-Cookie headers from auth.api.* calls
     // into Next.js's cookie jar when called from Server Actions.
     nextCookies(),
   ],
 });
+
+/** E2E-only: reads back an OTP captured by testUtils({ captureOTP: true }) above. */
+export async function getTestOtp(email: string): Promise<string | undefined> {
+  const ctx = await auth.$context;
+  return ctx.test.getOTP?.(email);
+}

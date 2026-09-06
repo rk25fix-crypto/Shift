@@ -32,11 +32,17 @@
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"]
   },
+  // migrations_dir must point at drizzle-kit's actual output (drizzle.config.ts's
+  // `out: "./drizzle/migrations"`) — wrangler's own default ("./migrations")
+  // doesn't exist in this repo, so `wrangler d1 migrations apply` silently
+  // had nothing to apply until this was added (found via a fresh local D1
+  // replica having zero tables, breaking any e2e test that touches the DB).
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "shift-db",
-      "database_id": "e4b0096f-322c-406d-8d76-9205b5396685"
+      "database_id": "e4b0096f-322c-406d-8d76-9205b5396685",
+      "migrations_dir": "drizzle/migrations"
     }
   ],
   "env": {
@@ -45,7 +51,8 @@
         {
           "binding": "DB",
           "database_name": "shift-db-preview",
-          "database_id": "90db1e8c-684f-4a03-84e9-c8ed6a179f41"
+          "database_id": "90db1e8c-684f-4a03-84e9-c8ed6a179f41",
+          "migrations_dir": "drizzle/migrations"
         }
       ]
     }

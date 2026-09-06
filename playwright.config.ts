@@ -33,7 +33,7 @@ export default defineConfig({
   ],
   webServer: {
     // In CI, serve the production build (`npm run build` in the workflow,
-    // then `npm run start` = `wrangler dev` against the prebuilt worker)
+    // then `npm run start:e2e` = `wrangler dev` against the prebuilt worker)
     // instead of the live `vinext dev` server. `vinext dev`'s Vite-based
     // dev server hung indefinitely on a fresh GitHub Actions runner with
     // zero output past its startup banner (reproduced across two full CI
@@ -42,7 +42,29 @@ export default defineConfig({
     // second even with every local cache (.wrangler, ~/.config/.wrangler,
     // dist/) cleared, and sidesteps whatever in `vinext dev`'s startup
     // path was hanging. Locally, `npm run dev` keeps live reload.
-    command: process.env.CI ? "npm run build && npm run start" : "npm run dev",
+    //
+    // start:e2e passes --var ENABLE_TEST_UTILS:true so tests can read a
+    // just-sent sign-in OTP from GET /api/test/otp instead of a real inbox
+    // (lib/auth/config.ts). It has to be --var, not a `.dev.vars` file:
+    // wrangler.jsonc declares `secrets.required`, which makes wrangler dev
+    // only forward vars/secrets that are either in `vars` or in
+    // `secrets.required` — ENABLE_TEST_UTILS is neither, so `.dev.vars` or
+    // .env.local entries for it are silently dropped (confirmed locally: it
+    // never reaches process.env that way). --var bypasses that allow-list.
+    // For local (non-CI) runs against `vinext dev`, the same allow-list
+    // applies (vinext dev goes through the same wrangler dev machinery), so
+    // there's no `.env.local` equivalent — use `npm run e2e:server` in one
+    // terminal (build + migrate + start:e2e) and `npm run e2e` in another;
+    // reuseExistingServer below picks it up.
+    //
+    // db:migrate:local must run before start:e2e: `wrangler dev --config
+    // dist/server/wrangler.json` persists its local D1 replica under
+    // dist/server/.wrangler/state by default — a different directory from
+    // the repo-root .wrangler/state that `wrangler d1 migrations apply
+    // --local` (no --config) would otherwise use — so every table lookup
+    // failed with a fresh checkout until both were pinned to the same
+    // --persist-to path (see package.json).
+    command: process.env.CI ? "npm run e2e:server" : "npm run dev",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

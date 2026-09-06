@@ -64,6 +64,14 @@ npm run build      # 本番ビルド(vinext build)
 
 CIは `.github/workflows/ci.yml` で lint / typecheck / test / test:d1 / build / e2e を毎PR実行します。デプロイ手順は [`DEPLOY.md`](./DEPLOY.md) を参照してください。
 
+### E2Eでログインが絡むテストを書く/動かす
+
+ログイン(メールOTP)を経由するE2Eテストは `e2e/fixtures.ts` の `signUpNewOrg()` を使ってください。実際のメール送信の代わりに `ENABLE_TEST_UTILS=true` のときだけ有効になる `GET /api/test/otp` からOTPを読み取ります(本番のWorkerでは有効化しません — `wrangler.jsonc` の `vars` にもダッシュボードのシークレットにも入れていないため。ダッシュボードで手動追加しない限り本番で有効になることはありません)。
+
+- CIの `npm run e2e` はこれを自動でセットアップ済みです(`npm run e2e:server` が内部で `--var ENABLE_TEST_UTILS:true` を付けて起動)。
+- **ローカルの `npm run dev`(`vinext dev`)に対してはこの種のテストを流せません。** `.env.local` は使えないので注意してください — `wrangler.jsonc` の `secrets.required` の仕組み上、`vars`/`secrets.required` に無いキーは `wrangler dev`/`vinext dev` が黙って捨てるため、`ENABLE_TEST_UTILS=true` を `.env.local` に書いても効きません。代わりに、別ターミナルで `npm run e2e:server`(ビルド→ローカルD1へマイグレーション適用→`wrangler dev --var ENABLE_TEST_UTILS:true` で起動)を実行してから `npm run e2e` を実行してください(Playwrightは非CI時 `reuseExistingServer: true` なので、起動済みのサーバーをそのまま使います)。
+- ローカルD1のマイグレーション未適用に注意: `wrangler dev --config dist/server/wrangler.json`(`npm run start`)は `dist/server/.wrangler/state` に独自のD1レプリカを持つため、リポジトリ直下の `.wrangler/state` に対して `npm run db:migrate:local` を実行しただけでは反映されません。`package.json` の `start` / `start:e2e` / `db:migrate:local` はすべて `--persist-to .wrangler/state` を明示して同じ場所を指すようにしています(`e2e:server` はこの順序をまとめて実行します)。
+
 ## ディレクトリ構成
 
 ```

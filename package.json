@@ -6,7 +6,9 @@
     "dev": "vinext dev --port 3000",
     "dev:next": "next dev",
     "build": "vinext build",
-    "start": "wrangler dev --config dist/server/wrangler.json --port 3000",
+    "start": "wrangler dev --config dist/server/wrangler.json --port 3000 --persist-to .wrangler/state",
+    "start:e2e": "wrangler dev --config dist/server/wrangler.json --port 3000 --persist-to .wrangler/state --var ENABLE_TEST_UTILS:true",
+    "e2e:server": "npm run build && npm run db:migrate:local && npm run start:e2e",
     "deploy": "vinext-cloudflare deploy --config dist/server/wrangler.json",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -16,7 +18,7 @@
     "e2e": "playwright test",
     "generate:icons": "node scripts/generate-icons.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply shift-db --local",
+    "db:migrate:local": "wrangler d1 migrations apply shift-db --local --persist-to .wrangler/state",
     "db:migrate:remote": "wrangler d1 migrations apply shift-db --remote"
   },
   "dependencies": {
