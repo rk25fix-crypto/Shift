@@ -17,6 +17,21 @@
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
+  // Plain-text vars set only via the Cloudflare dashboard ("テキスト" type,
+  // not "シークレット") get wiped by the next `wrangler deploy` unless
+  // they're declared here too — that silently broke BETTER_AUTH_URL-reliant
+  // auth checks once already (docs/plan.md's Phase 1a.5 deploy notes).
+  // BETTER_AUTH_SECRET / RESEND_API_KEY are true secrets (set as type
+  // "シークレット" in the dashboard's Settings > Variables and Secrets) and
+  // survive deploys on their own, but are declared as required here so a
+  // deploy fails loudly if either is ever missing, instead of surfacing as
+  // a buried "Missing API key" error deep in the auth flow.
+  "vars": {
+    "BETTER_AUTH_URL": "https://shift.sync-app-2026.workers.dev"
+  },
+  "secrets": {
+    "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
