@@ -32,7 +32,12 @@ export const auth = betterAuth({
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") return;
         await getResend().emails.send({
-          from: "Shift <no-reply@example.com>",
+          // Resend's shared onboarding@resend.dev domain only delivers to
+          // the account's own verified address until a custom domain is
+          // added (https://resend.com/domains) — fine for the Phase 1a.5
+          // pilot, but real customer sign-ups will need a verified domain
+          // here before Phase 1.5.
+          from: "Shift <onboarding@resend.dev>",
           to: email,
           subject: "Shift ログインコード",
           html: `<p>Shift へのログインコードです。</p><p style="font-size:32px;font-weight:700;letter-spacing:0.2em;">${otp}</p><p>アプリに戻り、このコードを入力してください。有効期限は5分です。</p><p style="color:#6b7280;font-size:13px;">心当たりがない場合は、このメールを破棄してください。</p>`,
