@@ -15,6 +15,7 @@ export interface ShiftTypeInput {
   breakMinutes: number;
   isRequired: boolean;
   isBalanced: boolean;
+  requiredCount: number;
   colorKey: string | null;
   sortOrder: number;
 }
@@ -24,6 +25,9 @@ export async function createShiftType(
 ): Promise<{ error: string | null }> {
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
+  if (!Number.isInteger(input.requiredCount) || input.requiredCount < 1) {
+    return { error: "必要人数は1人以上の整数にしてください" };
+  }
 
   const { db } = getScopedDb(organizationId);
 
@@ -38,6 +42,7 @@ export async function createShiftType(
       breakMinutes: input.breakMinutes,
       isRequired: input.isRequired,
       isBalanced: input.isBalanced,
+      requiredCount: input.requiredCount,
       colorKey: input.colorKey,
       sortOrder: input.sortOrder,
     });
@@ -55,6 +60,9 @@ export async function updateShiftType(
 ): Promise<{ error: string | null }> {
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
+  if (!Number.isInteger(input.requiredCount) || input.requiredCount < 1) {
+    return { error: "必要人数は1人以上の整数にしてください" };
+  }
 
   const { db } = getScopedDb(organizationId);
 
@@ -70,6 +78,7 @@ export async function updateShiftType(
         breakMinutes: input.breakMinutes,
         isRequired: input.isRequired,
         isBalanced: input.isBalanced,
+        requiredCount: input.requiredCount,
         colorKey: input.colorKey,
         sortOrder: input.sortOrder,
       })

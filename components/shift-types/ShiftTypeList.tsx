@@ -25,7 +25,7 @@ export function ShiftTypeList({ shiftTypes }: { shiftTypes: ShiftTypeRecord[] })
               <p className="text-sm text-gray-500">
                 {shiftType.startTime}〜{shiftType.endTime}
                 {shiftType.crossesMidnight && "(翌日)"} ・ 休憩{shiftType.breakMinutes}分
-                {shiftType.isRequired && " ・ 必須"}
+                {shiftType.isRequired && ` ・ 必須(${shiftType.requiredCount}人)`}
               </p>
             </div>
             <span aria-hidden className="text-gray-400">
