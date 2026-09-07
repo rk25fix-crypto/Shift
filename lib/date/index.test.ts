@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   datesInMonth,
+  datesInRange,
   datesInWeek,
   formatDateJapanese,
   isValidIsoDate,
@@ -106,6 +107,28 @@ describe("datesInWeek", () => {
       "2026-06-05",
       "2026-06-06",
       "2026-06-07",
+    ]);
+  });
+});
+
+describe("datesInRange", () => {
+  it("lists all dates in a half-open range", () => {
+    expect(datesInRange("2026-06-01", "2026-06-04")).toEqual([
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+    ]);
+  });
+
+  it("returns an empty array when start equals end", () => {
+    expect(datesInRange("2026-06-01", "2026-06-01")).toEqual([]);
+  });
+
+  it("crosses a month boundary", () => {
+    expect(datesInRange("2026-06-29", "2026-07-02")).toEqual([
+      "2026-06-29",
+      "2026-06-30",
+      "2026-07-01",
     ]);
   });
 });

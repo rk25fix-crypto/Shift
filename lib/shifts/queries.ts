@@ -1,4 +1,4 @@
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { shiftAssignments } from "@/drizzle/schema";
 import { monthOf, nextMonth } from "@/lib/date";
@@ -8,6 +8,7 @@ export interface Assignment {
   staffId: string;
   shiftTypeId: string;
   date: string;
+  status: "draft" | "confirmed";
 }
 
 export async function getAssignmentsForDate(
@@ -53,11 +54,17 @@ export async function getAssignmentsForStaffMonth(
   return rows.map(toAssignment);
 }
 
-/** Confirmed assignments for `[startDate, endDateExclusive)` — used by the week view. */
+/**
+ * Assignments for `[startDate, endDateExclusive)` — used by the week view.
+ * Confirmed-only by default; pass `includeDrafts` for the week view's own
+ * page, which is the only screen allowed to show unconfirmed drafts (Today
+ * view and the print view must never show a draft as if it were real).
+ */
 export async function getAssignmentsForOrgRange(
   organizationId: string,
   startDate: string,
   endDateExclusive: string,
+  options?: { includeDrafts?: boolean },
 ): Promise<Assignment[]> {
   const { db } = getScopedDb(organizationId);
   const rows = await db
@@ -66,7 +73,9 @@ export async function getAssignmentsForOrgRange(
     .where(
       and(
         eq(shiftAssignments.organizationId, organizationId),
-        eq(shiftAssignments.status, "confirmed"),
+        options?.includeDrafts
+          ? inArray(shiftAssignments.status, ["draft", "confirmed"])
+          : eq(shiftAssignments.status, "confirmed"),
         gte(shiftAssignments.date, startDate),
         lt(shiftAssignments.date, endDateExclusive),
       ),
@@ -100,5 +109,11 @@ export async function getAssignmentsForOrgMonth(
 type AssignmentRow = typeof shiftAssignments.$inferSelect;
 
 function toAssignment(row: AssignmentRow): Assignment {
-  return { id: row.id, staffId: row.staffId, shiftTypeId: row.shiftTypeId, date: row.date };
+  return {
+    id: row.id,
+    staffId: row.staffId,
+    shiftTypeId: row.shiftTypeId,
+    date: row.date,
+    status: row.status,
+  };
 }

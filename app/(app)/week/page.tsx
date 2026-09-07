@@ -6,6 +6,7 @@ import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { addDays, datesInWeek, isValidIsoDate, mondayOf, todayInTimezone } from "@/lib/date";
 import { WeekGrid } from "@/components/shift/WeekGrid";
+import { WeekActions } from "@/components/shift/WeekActions";
 
 export default async function WeekPage({
   searchParams,
@@ -19,12 +20,15 @@ export default async function WeekPage({
   const dates = datesInWeek(monday);
 
   const { organizationId } = await requireCurrentMembership();
+  const weekEndExclusive = addDays(monday, 7);
   const [staff, shiftTypes, assignments, timeOff] = await Promise.all([
     listStaff(organizationId),
     listShiftTypes(organizationId),
-    getAssignmentsForOrgRange(organizationId, monday, addDays(monday, 7)),
-    listTimeOffForRange(organizationId, monday, addDays(monday, 7)),
+    getAssignmentsForOrgRange(organizationId, monday, weekEndExclusive, { includeDrafts: true }),
+    listTimeOffForRange(organizationId, monday, weekEndExclusive),
   ]);
+  const hasRequiredShiftTypes = shiftTypes.some((t) => t.isRequired);
+  const hasDrafts = assignments.some((a) => a.status === "draft");
 
   return (
     <div className="flex flex-1 flex-col gap-4 py-6">
@@ -52,6 +56,12 @@ export default async function WeekPage({
           ›
         </Link>
       </div>
+      <WeekActions
+        startDate={monday}
+        endDateExclusive={weekEndExclusive}
+        hasRequiredShiftTypes={hasRequiredShiftTypes}
+        hasDrafts={hasDrafts}
+      />
       <WeekGrid dates={dates} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
     </div>
   );

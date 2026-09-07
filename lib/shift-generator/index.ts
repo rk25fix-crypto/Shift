@@ -85,6 +85,15 @@ export function generateShifts(input: GenerateShiftsInput): GenerateShiftsResult
   const alreadyAssigned = new Set(
     existingAssignments.map((a) => `${a.staffId}|${a.date}`),
   );
+  // How many of requiredCount a (date, shiftType) slot already has filled by
+  // an existing (confirmed) assignment — without this, regenerating a week
+  // that's partially confirmed would pile MORE staff on top of an
+  // already-full slot, and report a fully-staffed slot as short-handed.
+  const alreadyFilledCount = new Map<string, number>();
+  for (const a of existingAssignments) {
+    const key = `${a.date}|${a.shiftTypeId}`;
+    alreadyFilledCount.set(key, (alreadyFilledCount.get(key) ?? 0) + 1);
+  }
 
   // Balance workload by always picking the least-recently/least-often used
   // eligible staff member for each balanced+required shift type. Seeded
@@ -105,9 +114,12 @@ export function generateShifts(input: GenerateShiftsInput): GenerateShiftsResult
 
     for (const shiftType of requiredTypes) {
       const neededCount = Math.max(1, shiftType.requiredCount);
-      let filledCount = 0;
+      let filledCount = Math.min(
+        neededCount,
+        alreadyFilledCount.get(`${date}|${shiftType.id}`) ?? 0,
+      );
 
-      for (let i = 0; i < neededCount; i++) {
+      for (let i = filledCount; i < neededCount; i++) {
         const eligible = staff.filter((s) => {
           if (s.fixedDaysOff.includes(dow)) return false;
           if (s.unavailableShiftTypeIds.includes(shiftType.id)) return false;

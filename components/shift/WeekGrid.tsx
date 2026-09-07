@@ -73,6 +73,7 @@ export function WeekGrid({ dates, staff, shiftTypes, assignments, timeOff }: Wee
                       <ShiftChip
                         label={shiftType ? shiftType.code : isTimeOff ? "休" : "―"}
                         isAssigned={Boolean(shiftType)}
+                        isDraft={assignment?.status === "draft"}
                         onClick={() => setOpenCell({ staffId: member.id, date })}
                       />
                     </td>

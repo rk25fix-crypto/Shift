@@ -7,6 +7,7 @@ import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForDate, getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { setShiftAssignment } from "@/lib/shifts/assign";
+import { confirmDraftShifts, discardDraftShifts, generateDraftShifts } from "@/lib/shifts/generate";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { setTimeOffRequest } from "@/lib/time-off/set";
 import { shiftAssignments } from "@/drizzle/schema";
@@ -217,6 +218,125 @@ describe("time_off_requests isolation", () => {
     expect(timeOff).toHaveLength(0);
     const assignments = await getAssignmentsForDate(orgA.id, "2026-06-23");
     expect(assignments).toHaveLength(1);
+  });
+});
+
+describe("generateDraftShifts/confirmDraftShifts/discardDraftShifts isolation (write path)", () => {
+  const RANGE_START = "2026-07-06"; // a Monday, unused by any other test's fixture data
+  const RANGE_END = "2026-07-13";
+
+  it("generateDraftShifts only writes drafts for the calling org", async () => {
+    const before = await getAssignmentsForOrgRange(orgB.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(before).toHaveLength(0);
+
+    const result = await generateDraftShifts(orgA.id, RANGE_START, RANGE_END);
+    expect(result.error).toBeNull();
+    expect(result.draftCount).toBe(7); // one per day, staffA is eligible every day
+
+    const draftsA = await getAssignmentsForOrgRange(orgA.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(draftsA).toHaveLength(7);
+    expect(draftsA.every((a) => a.status === "draft" && a.staffId === staffA.id)).toBe(true);
+
+    const stillNoneForB = await getAssignmentsForOrgRange(orgB.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(stillNoneForB).toHaveLength(0);
+  });
+
+  it("confirmDraftShifts only confirms the calling org's drafts in range", async () => {
+    await generateDraftShifts(orgB.id, RANGE_START, RANGE_END);
+
+    const result = await confirmDraftShifts(orgA.id, RANGE_START, RANGE_END);
+    expect(result.error).toBeNull();
+
+    const orgAAssignments = await getAssignmentsForOrgRange(orgA.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(orgAAssignments.every((a) => a.status === "confirmed")).toBe(true);
+
+    const orgBAssignments = await getAssignmentsForOrgRange(orgB.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(orgBAssignments.length).toBeGreaterThan(0);
+    expect(orgBAssignments.every((a) => a.status === "draft")).toBe(true);
+  });
+
+  it("discardDraftShifts only discards the calling org's drafts in range", async () => {
+    // orgA's assignments in this range are confirmed (previous test) — discard must not touch them.
+    const result = await discardDraftShifts(orgB.id, RANGE_START, RANGE_END);
+    expect(result.error).toBeNull();
+
+    const orgBAssignments = await getAssignmentsForOrgRange(orgB.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(orgBAssignments).toHaveLength(0);
+
+    const orgAAssignments = await getAssignmentsForOrgRange(orgA.id, RANGE_START, RANGE_END, {
+      includeDrafts: true,
+    });
+    expect(orgAAssignments).toHaveLength(7);
+    expect(orgAAssignments.every((a) => a.status === "confirmed")).toBe(true);
+  });
+
+  it("inserts more than 16 drafts in one call without hitting D1's bound-parameter limit", async () => {
+    // Regression test for a real bug: drizzle binds every column per row
+    // (including `id` and the `status` literal, not just the "obvious"
+    // values), so a naive chunk size based on a wrong per-row param count
+    // silently exceeded D1's 100-bound-parameter ceiling once a single
+    // generate() call produced more than ~16 rows.
+    //
+    // orgA already has shiftTypeA (isRequired, requiredCount 1) from this
+    // file's shared fixtures, so it competes for the same staff pool as the
+    // new type below — 3 extra staff (4 total with staffA) exactly covers
+    // shiftTypeA's 1/day + this type's 3/day, giving 7*(1+3) = 28 rows with
+    // nothing left unfilled.
+    const db = getRawDb();
+    const extraStaff = await db
+      .insert(staff)
+      .values([
+        { organizationId: orgA.id, name: "スタッフC" },
+        { organizationId: orgA.id, name: "スタッフD" },
+        { organizationId: orgA.id, name: "スタッフE" },
+      ])
+      .returning({ id: staff.id });
+
+    const [manyRequiredType] = await db
+      .insert(shiftTypes)
+      .values({
+        organizationId: orgA.id,
+        code: "遅1",
+        name: "遅番",
+        startTime: "13:00",
+        endTime: "22:00",
+        isRequired: true,
+        requiredCount: 3,
+      })
+      .returning({ id: shiftTypes.id });
+
+    const start = "2026-08-03"; // a Monday, unused by any other test's fixture data
+    const end = "2026-08-10";
+
+    const result = await generateDraftShifts(orgA.id, start, end);
+    expect(result.error).toBeNull();
+    expect(result.draftCount).toBe(28); // (1 + 3) required per day x 7 days
+    expect(result.unfilledShifts).toHaveLength(0);
+
+    const drafts = await getAssignmentsForOrgRange(orgA.id, start, end, { includeDrafts: true });
+    expect(drafts).toHaveLength(28);
+    expect(drafts.every((a) => a.status === "draft")).toBe(true);
+    expect(drafts.filter((a) => a.shiftTypeId === manyRequiredType.id)).toHaveLength(21);
+
+    // Cleanup so this fixture doesn't affect any other test in the file
+    // (e.g. staff/shift-type listing counts) run after this one.
+    await discardDraftShifts(orgA.id, start, end);
+    await db.delete(shiftTypes).where(eq(shiftTypes.id, manyRequiredType.id));
+    for (const s of extraStaff) {
+      await db.delete(staff).where(eq(staff.id, s.id));
+    }
   });
 });
 

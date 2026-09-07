@@ -163,4 +163,35 @@ describe("generateShifts", () => {
 
     expect(result.draftAssignments).toEqual([{ staffId: "bob", shiftTypeId: "early", date: "2026-06-01" }]);
   });
+
+  it("treats an already-confirmed assignment as filling the slot, not as extra", () => {
+    // alice is already confirmed for EARLY on 2026-06-01 — regenerating
+    // must not pile bob on top of a slot that's already full.
+    const result = generateShifts({
+      staff: [ALICE, BOB],
+      shiftTypes: [EARLY], // requiredCount: 1
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [{ staffId: "alice", shiftTypeId: "early", date: "2026-06-01" }],
+    });
+
+    expect(result.draftAssignments).toHaveLength(0);
+    expect(result.unfilledShifts).toHaveLength(0);
+  });
+
+  it("only drafts the remaining shortfall when a shift type is partially confirmed", () => {
+    const earlyNeedsTwo: GeneratorShiftType = { ...EARLY, requiredCount: 2 };
+
+    const result = generateShifts({
+      staff: [ALICE, BOB, CAROL],
+      shiftTypes: [earlyNeedsTwo],
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [{ staffId: "alice", shiftTypeId: "early", date: "2026-06-01" }],
+    });
+
+    expect(result.draftAssignments).toHaveLength(1);
+    expect(result.draftAssignments[0].staffId).not.toBe("alice");
+    expect(result.unfilledShifts).toHaveLength(0);
+  });
 });

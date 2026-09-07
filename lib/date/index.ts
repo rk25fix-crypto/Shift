@@ -57,6 +57,15 @@ export function datesInWeek(monday: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
 }
 
+/** All ISO dates (YYYY-MM-DD) in `[startDate, endDateExclusive)`, in order. */
+export function datesInRange(startDate: string, endDateExclusive: string): string[] {
+  const dates: string[] = [];
+  for (let d = startDate; d < endDateExclusive; d = addDays(d, 1)) {
+    dates.push(d);
+  }
+  return dates;
+}
+
 /** All ISO dates (YYYY-MM-DD) in the given YYYY-MM month, in order. */
 export function datesInMonth(yearMonth: string): string[] {
   const [year, month] = yearMonth.split("-").map(Number);
