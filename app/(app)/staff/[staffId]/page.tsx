@@ -3,9 +3,11 @@ import { requireCurrentMembership } from "@/lib/org/current";
 import { getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
-import { todayInTimezone } from "@/lib/date";
+import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
+import { monthOf, nextMonth, todayInTimezone } from "@/lib/date";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffMonthShifts } from "@/components/staff/StaffMonthShifts";
+import { LaborWarningsList } from "@/components/shift/LaborWarningsList";
 import { DeactivateStaffButton } from "@/components/staff/DeactivateStaffButton";
 
 export default async function StaffDetailPage({
@@ -20,15 +22,28 @@ export default async function StaffDetailPage({
   if (!staff) notFound();
 
   const canEditCompensation = role === "owner";
-  const [shiftTypes, hourlyWage, monthAssignments] = await Promise.all([
+  const today = todayInTimezone();
+  const monthStart = `${monthOf(today)}-01`;
+  const monthEndExclusive = `${nextMonth(monthOf(today))}-01`;
+  const [shiftTypes, hourlyWage, monthAssignments, orgWarnings] = await Promise.all([
     listShiftTypes(organizationId),
     getStaffHourlyWage(organizationId, staffId, role),
-    getAssignmentsForStaffMonth(organizationId, staffId, todayInTimezone()),
+    getAssignmentsForStaffMonth(organizationId, staffId, today),
+    getLaborWarnings(organizationId, monthStart, monthEndExclusive),
   ]);
+  const staffWarnings = {
+    consecutiveDayViolations: orgWarnings.consecutiveDayViolations.filter((v) => v.staffId === staffId),
+    hoursViolations: orgWarnings.hoursViolations.filter((v) => v.staffId === staffId),
+    breakViolations: orgWarnings.breakViolations.filter((v) => v.staffId === staffId),
+  };
 
   return (
     <div className="flex flex-1 flex-col">
       <h1 className="px-4 pt-6 text-xl font-bold">{staff.name}</h1>
+
+      <div className="mt-4">
+        <LaborWarningsList warnings={staffWarnings} />
+      </div>
 
       <section className="flex flex-col gap-2 py-6">
         <h2 className="px-4 text-sm font-semibold text-gray-500">今月のシフト</h2>

@@ -184,6 +184,39 @@ export function detectBreakViolations(
   return violations;
 }
 
+/**
+ * The detect* functions above need a lookback window (e.g. the prior 7
+ * days) to correctly catch a violation that started before the range being
+ * displayed — but that also means they return violations the caller never
+ * asked to see (e.g. a consecutive-day streak entirely within last month).
+ * These filter the detected violations down to ones that actually overlap
+ * `[displayStart, displayEndExclusive)`, for callers that fetched a wider
+ * range than they intend to show.
+ */
+export function filterConsecutiveDayViolationsToRange(
+  violations: ConsecutiveDaysViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): ConsecutiveDaysViolation[] {
+  return violations.filter((v) => v.endDate >= displayStart && v.startDate < displayEndExclusive);
+}
+
+export function filterHoursViolationsToRange(
+  violations: HoursViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): HoursViolation[] {
+  return violations.filter((v) => v.periodEnd >= displayStart && v.periodStart < displayEndExclusive);
+}
+
+export function filterBreakViolationsToRange(
+  violations: BreakViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): BreakViolation[] {
+  return violations.filter((v) => v.date >= displayStart && v.date < displayEndExclusive);
+}
+
 function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const item of items) {

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getRawDb } from "@/lib/db/raw";
 import { getScopedDb } from "@/lib/db/scopedClient";
@@ -10,6 +10,8 @@ import { setShiftAssignment } from "@/lib/shifts/assign";
 import { confirmDraftShifts, discardDraftShifts, generateDraftShifts } from "@/lib/shifts/generate";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { setTimeOffRequest } from "@/lib/time-off/set";
+import { getWorkRuleSettings } from "@/lib/org/queries";
+import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
 import { shiftAssignments } from "@/drizzle/schema";
 
 /**
@@ -336,6 +338,72 @@ describe("generateDraftShifts/confirmDraftShifts/discardDraftShifts isolation (w
     await db.delete(shiftTypes).where(eq(shiftTypes.id, manyRequiredType.id));
     for (const s of extraStaff) {
       await db.delete(staff).where(eq(staff.id, s.id));
+    }
+  });
+});
+
+describe("getWorkRuleSettings isolation", () => {
+  it("returns each org's own thresholds, not another org's", async () => {
+    const db = getRawDb();
+    // Both orgs use the schema default (6) at this point — give orgA a
+    // distinct value so a mix-up would actually be visible.
+    await db
+      .update(organizations)
+      .set({ maxConsecutiveDays: 3 })
+      .where(eq(organizations.id, orgA.id));
+
+    try {
+      const settingsA = await getWorkRuleSettings(orgA.id);
+      expect(settingsA.maxConsecutiveDays).toBe(3);
+
+      const settingsB = await getWorkRuleSettings(orgB.id);
+      expect(settingsB.maxConsecutiveDays).toBe(6);
+    } finally {
+      await db
+        .update(organizations)
+        .set({ maxConsecutiveDays: 6 })
+        .where(eq(organizations.id, orgA.id));
+    }
+  });
+});
+
+describe("getLaborWarnings isolation", () => {
+  it("never surfaces another org's staff in its violations", async () => {
+    const db = getRawDb();
+    const start = "2026-09-07"; // a Monday, unused by any other test's fixture data
+    const end = "2026-09-14";
+    const dates = ["07", "08", "09", "10", "11", "12", "13"].map((d) => `2026-09-${d}`);
+
+    // 7 consecutive confirmed days trips the default 6-day limit.
+    await db.insert(shiftAssignments).values(
+      dates.map((date) => ({
+        organizationId: orgA.id,
+        staffId: staffA.id,
+        shiftTypeId: shiftTypeA.id,
+        date,
+      })),
+    );
+
+    try {
+      const warningsA = await getLaborWarnings(orgA.id, start, end);
+      expect(warningsA.consecutiveDayViolations).toHaveLength(1);
+      expect(warningsA.consecutiveDayViolations[0].staffId).toBe(staffA.id);
+
+      const warningsB = await getLaborWarnings(orgB.id, start, end);
+      expect(warningsB.consecutiveDayViolations).toHaveLength(0);
+      expect(warningsB.hoursViolations).toHaveLength(0);
+      expect(warningsB.breakViolations).toHaveLength(0);
+    } finally {
+      await db
+        .delete(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.organizationId, orgA.id),
+            eq(shiftAssignments.staffId, staffA.id),
+            gte(shiftAssignments.date, start),
+            lt(shiftAssignments.date, end),
+          ),
+        );
     }
   });
 });

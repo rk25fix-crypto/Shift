@@ -15,10 +15,19 @@ interface WeekGridProps {
   shiftTypes: ShiftTypeRecord[];
   assignments: Assignment[];
   timeOff: TimeOff[];
+  /** Staff with a 勤務ルール警告 overlapping this week (lib/shifts/labor-warnings.ts) — shown as a badge next to their name. */
+  staffIdsWithWarnings?: Set<string>;
 }
 
 /** 7-day × staff grid — a horizontally-scrollable week overview, unlike the Today view's single-date focus (docs/plan.md, "週グリッド"). */
-export function WeekGrid({ dates, staff, shiftTypes, assignments, timeOff }: WeekGridProps) {
+export function WeekGrid({
+  dates,
+  staff,
+  shiftTypes,
+  assignments,
+  timeOff,
+  staffIdsWithWarnings,
+}: WeekGridProps) {
   const [openCell, setOpenCell] = useState<{ staffId: string; date: string } | null>(null);
 
   if (staff.length === 0) {
@@ -62,6 +71,11 @@ export function WeekGrid({ dates, staff, shiftTypes, assignments, timeOff }: Wee
               <tr key={member.id} className="border-t border-gray-100">
                 <th className="sticky left-0 bg-white px-2 py-3 text-left font-medium">
                   {member.name}
+                  {staffIdsWithWarnings?.has(member.id) && (
+                    <span aria-label="勤務ルール警告あり" className="ml-1">
+                      ⚠
+                    </span>
+                  )}
                 </th>
                 {dates.map((date) => {
                   const key = `${member.id}|${date}`;

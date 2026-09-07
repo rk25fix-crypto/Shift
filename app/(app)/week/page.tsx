@@ -3,6 +3,7 @@ import { requireCurrentMembership } from "@/lib/org/current";
 import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { addDays, datesInWeek, isValidIsoDate, mondayOf, todayInTimezone } from "@/lib/date";
 import { WeekGrid } from "@/components/shift/WeekGrid";
@@ -21,14 +22,22 @@ export default async function WeekPage({
 
   const { organizationId } = await requireCurrentMembership();
   const weekEndExclusive = addDays(monday, 7);
-  const [staff, shiftTypes, assignments, timeOff] = await Promise.all([
+  const [staff, shiftTypes, assignments, timeOff, warnings] = await Promise.all([
     listStaff(organizationId),
     listShiftTypes(organizationId),
     getAssignmentsForOrgRange(organizationId, monday, weekEndExclusive, { includeDrafts: true }),
     listTimeOffForRange(organizationId, monday, weekEndExclusive),
+    // includeDrafts here too: a manager should see a problem before
+    // confirming a generated shift, not only after.
+    getLaborWarnings(organizationId, monday, weekEndExclusive, { includeDrafts: true }),
   ]);
   const hasRequiredShiftTypes = shiftTypes.some((t) => t.isRequired);
   const hasDrafts = assignments.some((a) => a.status === "draft");
+  const staffIdsWithWarnings = new Set([
+    ...warnings.consecutiveDayViolations.map((v) => v.staffId),
+    ...warnings.hoursViolations.map((v) => v.staffId),
+    ...warnings.breakViolations.map((v) => v.staffId),
+  ]);
 
   return (
     <div className="flex flex-1 flex-col gap-4 py-6">
@@ -62,7 +71,14 @@ export default async function WeekPage({
         hasRequiredShiftTypes={hasRequiredShiftTypes}
         hasDrafts={hasDrafts}
       />
-      <WeekGrid dates={dates} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
+      <WeekGrid
+        dates={dates}
+        staff={staff}
+        shiftTypes={shiftTypes}
+        assignments={assignments}
+        timeOff={timeOff}
+        staffIdsWithWarnings={staffIdsWithWarnings}
+      />
     </div>
   );
 }
