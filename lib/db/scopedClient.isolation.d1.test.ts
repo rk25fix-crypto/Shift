@@ -4,8 +4,14 @@ import { getRawDb } from "@/lib/db/raw";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { organizations, staff, staffCompensation, shiftTypes, subscriptions } from "@/drizzle/schema";
 import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
-import { listShiftTypes } from "@/lib/shift-types/queries";
-import { getAssignmentsForDate, getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { createStaffCore, deactivateStaffCore, updateStaffCore } from "@/lib/staff/write";
+import { listShiftTypes, getShiftType } from "@/lib/shift-types/queries";
+import { createShiftTypeCore, deleteShiftTypeCore, updateShiftTypeCore } from "@/lib/shift-types/write";
+import {
+  getAssignmentsForDate,
+  getAssignmentsForOrgMonth,
+  getAssignmentsForOrgRange,
+} from "@/lib/shifts/queries";
 import { setShiftAssignment } from "@/lib/shifts/assign";
 import { confirmDraftShifts, discardDraftShifts, generateDraftShifts } from "@/lib/shifts/generate";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
@@ -125,6 +131,110 @@ describe("staff_compensation isolation (column-level, RLS-equivalent)", () => {
   });
 });
 
+describe("createStaffCore/updateStaffCore/deactivateStaffCore isolation (write path)", () => {
+  const baseInput = {
+    name: "新規スタッフ",
+    roleLabel: "",
+    fixedDaysOff: [],
+    unavailableShiftTypeIds: [],
+    hourlyWage: null as number | null,
+  };
+
+  it("createStaffCore only ever writes into the calling org", async () => {
+    const result = await createStaffCore(orgA.id, "owner", { ...baseInput, name: "作成テスト" });
+    expect(result.error).toBeNull();
+
+    const listA = await listStaff(orgA.id);
+    const created = listA.find((s) => s.name === "作成テスト");
+    expect(created).toBeDefined();
+
+    const listB = await listStaff(orgB.id);
+    expect(listB.some((s) => s.name === "作成テスト")).toBe(false);
+
+    const db = getRawDb();
+    await db.delete(staff).where(eq(staff.id, created!.id));
+  });
+
+  it("createStaffCore writes staff_compensation only when the caller's role is owner", async () => {
+    const owned = await createStaffCore(orgA.id, "owner", {
+      ...baseInput,
+      name: "時給テストowner",
+      hourlyWage: 999,
+    });
+    expect(owned.error).toBeNull();
+    const ownerStaff = (await listStaff(orgA.id)).find((s) => s.name === "時給テストowner")!;
+    expect(await getStaffHourlyWage(orgA.id, ownerStaff.id, "owner")).toBe(999);
+
+    const asAdmin = await createStaffCore(orgA.id, "admin", {
+      ...baseInput,
+      name: "時給テストadmin",
+      hourlyWage: 999,
+    });
+    expect(asAdmin.error).toBeNull();
+    const adminStaff = (await listStaff(orgA.id)).find((s) => s.name === "時給テストadmin")!;
+    expect(await getStaffHourlyWage(orgA.id, adminStaff.id, "owner")).toBeNull();
+
+    const db = getRawDb();
+    await db.delete(staff).where(eq(staff.id, ownerStaff.id));
+    await db.delete(staff).where(eq(staff.id, adminStaff.id));
+  });
+
+  it("updateStaffCore rejects a mismatched staffId instead of silently overwriting another org's wage", async () => {
+    // Regression test: staffCompensation.staffId is unique with no
+    // organizationId guard of its own, so before updateStaffCore resolved
+    // staffId against organizationId first, this call would have silently
+    // overwritten org B's wage row (or inserted an orphan one for orgA) via
+    // its onConflictDoUpdate — the staff-row UPDATE's own WHERE clause
+    // matching zero rows was not enough to stop it.
+    const before = await getStaff(orgB.id, staffB.id);
+    expect(before).not.toBeNull();
+
+    const updateResult = await updateStaffCore(orgA.id, "owner", staffB.id, {
+      ...baseInput,
+      name: "乗っ取りテスト",
+      hourlyWage: 1,
+    });
+    expect(updateResult.error).toBe("スタッフが見つかりません");
+
+    const after = await getStaff(orgB.id, staffB.id);
+    expect(after).toEqual(before);
+    expect(await getStaffHourlyWage(orgB.id, staffB.id, "owner")).toBe(1500);
+  });
+
+  it("deactivateStaffCore never mutates another org's staff row when passed a mismatched staffId", async () => {
+    // Scoped with orgA.id but targets staffB (org B's row) — the org-scoped
+    // WHERE clause must match zero rows, not staffB's.
+    const before = await getStaff(orgB.id, staffB.id);
+    expect(before).not.toBeNull();
+
+    const deactivateResult = await deactivateStaffCore(orgA.id, staffB.id);
+    expect(deactivateResult.error).toBeNull();
+
+    const after = await getStaff(orgB.id, staffB.id);
+    expect(after).toEqual(before);
+  });
+
+  it("updateStaffCore/deactivateStaffCore mutate the caller's own org's staff row", async () => {
+    const created = await createStaffCore(orgA.id, "owner", { ...baseInput, name: "更新前" });
+    expect(created.error).toBeNull();
+    const row = (await listStaff(orgA.id)).find((s) => s.name === "更新前")!;
+
+    const updateResult = await updateStaffCore(orgA.id, "owner", row.id, {
+      ...baseInput,
+      name: "更新後",
+    });
+    expect(updateResult.error).toBeNull();
+    expect((await getStaff(orgA.id, row.id))?.name).toBe("更新後");
+
+    const deactivateResult = await deactivateStaffCore(orgA.id, row.id);
+    expect(deactivateResult.error).toBeNull();
+    expect((await getStaff(orgA.id, row.id))?.isActive).toBe(false);
+
+    const db = getRawDb();
+    await db.delete(staff).where(eq(staff.id, row.id));
+  });
+});
+
 describe("shift_types isolation", () => {
   it("listShiftTypes never returns another org's shift types", async () => {
     const resultA = await listShiftTypes(orgA.id);
@@ -132,6 +242,81 @@ describe("shift_types isolation", () => {
 
     const resultB = await listShiftTypes(orgB.id);
     expect(resultB.map((t) => t.id)).toEqual([shiftTypeB.id]);
+  });
+
+  it("getShiftType returns null when shiftTypeId belongs to a different org", async () => {
+    expect(await getShiftType(orgA.id, shiftTypeB.id)).toBeNull();
+    expect(await getShiftType(orgB.id, shiftTypeA.id)).toBeNull();
+  });
+
+  it("getShiftType returns the record for the correct org", async () => {
+    const result = await getShiftType(orgA.id, shiftTypeA.id);
+    expect(result?.id).toBe(shiftTypeA.id);
+  });
+});
+
+describe("createShiftTypeCore/updateShiftTypeCore/deleteShiftTypeCore isolation (write path)", () => {
+  const baseInput = {
+    code: "テ1",
+    name: "テスト番",
+    startTime: "09:00",
+    endTime: "18:00",
+    crossesMidnight: false,
+    breakMinutes: 60,
+    isRequired: false,
+    isBalanced: true,
+    requiredCount: 1,
+    colorKey: null,
+    sortOrder: 0,
+  };
+
+  it("createShiftTypeCore only ever writes into the calling org", async () => {
+    const result = await createShiftTypeCore(orgA.id, { ...baseInput, code: "作成テ" });
+    expect(result.error).toBeNull();
+
+    const listA = await listShiftTypes(orgA.id);
+    const created = listA.find((t) => t.code === "作成テ");
+    expect(created).toBeDefined();
+
+    const listB = await listShiftTypes(orgB.id);
+    expect(listB.some((t) => t.code === "作成テ")).toBe(false);
+
+    const db = getRawDb();
+    await db.delete(shiftTypes).where(eq(shiftTypes.id, created!.id));
+  });
+
+  it("updateShiftTypeCore/deleteShiftTypeCore never mutate another org's shift type when passed a mismatched id", async () => {
+    // Both calls are scoped with orgA.id but target shiftTypeB (org B's row)
+    // — the org-scoped WHERE clause must match zero rows, not shiftTypeB's.
+    const before = await getShiftType(orgB.id, shiftTypeB.id);
+    expect(before).not.toBeNull();
+
+    const updateResult = await updateShiftTypeCore(orgA.id, shiftTypeB.id, {
+      ...baseInput,
+      code: "乗っ取り",
+    });
+    expect(updateResult.error).toBeNull();
+
+    const deleteResult = await deleteShiftTypeCore(orgA.id, shiftTypeB.id);
+    expect(deleteResult.error).toBeNull();
+
+    const after = await getShiftType(orgB.id, shiftTypeB.id);
+    expect(after).toEqual(before);
+  });
+
+  it("updateShiftTypeCore updates the caller's own org's shift type", async () => {
+    const created = await createShiftTypeCore(orgA.id, { ...baseInput, code: "更新前テ" });
+    expect(created.error).toBeNull();
+    const row = (await listShiftTypes(orgA.id)).find((t) => t.code === "更新前テ")!;
+
+    const result = await updateShiftTypeCore(orgA.id, row.id, { ...baseInput, code: "更新後テ" });
+    expect(result.error).toBeNull();
+
+    const updated = await getShiftType(orgA.id, row.id);
+    expect(updated?.code).toBe("更新後テ");
+
+    const cleanupResult = await deleteShiftTypeCore(orgA.id, row.id);
+    expect(cleanupResult.error).toBeNull();
   });
 });
 
@@ -151,6 +336,14 @@ describe("shift_assignments isolation", () => {
     expect(resultA[0].staffId).toBe(staffA.id);
 
     const resultB = await getAssignmentsForOrgRange(orgB.id, "2026-05-30", "2026-06-06");
+    expect(resultB).toHaveLength(0);
+  });
+
+  it("getAssignmentsForOrgMonth never returns another org's assignments", async () => {
+    const resultA = await getAssignmentsForOrgMonth(orgA.id, "2026-06");
+    expect(resultA.some((a) => a.date === "2026-06-01" && a.staffId === staffA.id)).toBe(true);
+
+    const resultB = await getAssignmentsForOrgMonth(orgB.id, "2026-06");
     expect(resultB).toHaveLength(0);
   });
 });
