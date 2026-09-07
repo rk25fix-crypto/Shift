@@ -1,5 +1,5 @@
 import { and, eq, gte, lt } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getRawDb } from "@/lib/db/raw";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { organizations, staff, staffCompensation, shiftTypes, subscriptions } from "@/drizzle/schema";
@@ -12,6 +12,7 @@ import { listTimeOffForRange } from "@/lib/time-off/queries";
 import { setTimeOffRequest } from "@/lib/time-off/set";
 import { getWorkRuleSettings } from "@/lib/org/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
+import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
 import { shiftAssignments } from "@/drizzle/schema";
 
 /**
@@ -405,6 +406,96 @@ describe("getLaborWarnings isolation", () => {
           ),
         );
     }
+  });
+});
+
+describe("getStaffPayrollEstimate isolation", () => {
+  // Dedicated staff + a month no other test in this file touches: staffA
+  // picks up extra confirmed June rows from the setShiftAssignment and
+  // time-off describe blocks above (both leave their writes in place), so
+  // reusing it here would make this suite's expected totals depend on test
+  // execution order elsewhere in the file. Fresh rows sidestep that.
+  let payrollStaffA: { id: string };
+  let payrollStaffB: { id: string };
+  const PAYROLL_SHIFT_DATE = "2026-10-05";
+  const PAYROLL_MONTH_ANCHOR = "2026-10-15";
+
+  beforeAll(async () => {
+    const db = getRawDb();
+    [payrollStaffA] = await db
+      .insert(staff)
+      .values({ organizationId: orgA.id, name: "給与テストA" })
+      .returning({ id: staff.id });
+    [payrollStaffB] = await db
+      .insert(staff)
+      .values({ organizationId: orgB.id, name: "給与テストB" })
+      .returning({ id: staff.id });
+
+    await db.insert(staffCompensation).values({
+      organizationId: orgA.id,
+      staffId: payrollStaffA.id,
+      hourlyWage: 1200,
+    });
+    await db.insert(staffCompensation).values({
+      organizationId: orgB.id,
+      staffId: payrollStaffB.id,
+      hourlyWage: 1500,
+    });
+
+    // Only payrollStaffA gets a shift — payrollStaffB stays unworked so a
+    // cross-tenant mix-up would surface as totalHours > 0 for org B below.
+    await db.insert(shiftAssignments).values({
+      organizationId: orgA.id,
+      staffId: payrollStaffA.id,
+      shiftTypeId: shiftTypeA.id,
+      date: PAYROLL_SHIFT_DATE,
+    });
+  });
+
+  afterAll(async () => {
+    // Unlike staffA/staffB (shared fixtures other describe blocks still
+    // read), these two are private to this block — leaving them behind
+    // would skew any test appended later that counts all of orgA's or
+    // orgB's staff (e.g. listStaff, generateDraftShifts's eligible pool).
+    const db = getRawDb();
+    await db.delete(staff).where(eq(staff.id, payrollStaffA.id));
+    await db.delete(staff).where(eq(staff.id, payrollStaffB.id));
+  });
+
+  it("computes the estimate from the calling org's own wage and shifts only", async () => {
+    // shiftTypeA is 07:00-16:00 with no break -> 9h x hourlyWage 1200 = 10800.
+    const estimate = await getStaffPayrollEstimate(
+      orgA.id,
+      payrollStaffA.id,
+      "owner",
+      PAYROLL_MONTH_ANCHOR,
+    );
+    expect(estimate).toEqual({ hourlyWage: 1200, totalHours: 9, estimatedPay: 10800 });
+  });
+
+  it("returns null for a non-owner role even for the caller's own org", async () => {
+    expect(
+      await getStaffPayrollEstimate(orgA.id, payrollStaffA.id, "staff", PAYROLL_MONTH_ANCHOR),
+    ).toBeNull();
+    expect(
+      await getStaffPayrollEstimate(orgA.id, payrollStaffA.id, "admin", PAYROLL_MONTH_ANCHOR),
+    ).toBeNull();
+  });
+
+  it("returns null when staffId belongs to a different org instead of leaking it", async () => {
+    expect(
+      await getStaffPayrollEstimate(orgA.id, payrollStaffB.id, "owner", PAYROLL_MONTH_ANCHOR),
+    ).toBeNull();
+  });
+
+  it("never mixes org B's wage or shifts into org A's estimate", async () => {
+    const estimateB = await getStaffPayrollEstimate(
+      orgB.id,
+      payrollStaffB.id,
+      "owner",
+      PAYROLL_MONTH_ANCHOR,
+    );
+    expect(estimateB).toEqual({ hourlyWage: 1500, totalHours: 0, estimatedPay: 0 });
   });
 });
 

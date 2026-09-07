@@ -4,10 +4,12 @@ import { getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
+import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
 import { monthOf, nextMonth, todayInTimezone } from "@/lib/date";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffMonthShifts } from "@/components/staff/StaffMonthShifts";
 import { LaborWarningsList } from "@/components/shift/LaborWarningsList";
+import { PayrollEstimate } from "@/components/staff/PayrollEstimate";
 import { DeactivateStaffButton } from "@/components/staff/DeactivateStaffButton";
 
 export default async function StaffDetailPage({
@@ -25,11 +27,14 @@ export default async function StaffDetailPage({
   const today = todayInTimezone();
   const monthStart = `${monthOf(today)}-01`;
   const monthEndExclusive = `${nextMonth(monthOf(today))}-01`;
-  const [shiftTypes, hourlyWage, monthAssignments, orgWarnings] = await Promise.all([
+  const [shiftTypes, hourlyWage, monthAssignments, orgWarnings, payrollEstimate] = await Promise.all([
     listShiftTypes(organizationId),
     getStaffHourlyWage(organizationId, staffId, role),
     getAssignmentsForStaffMonth(organizationId, staffId, today),
     getLaborWarnings(organizationId, monthStart, monthEndExclusive),
+    canEditCompensation
+      ? getStaffPayrollEstimate(organizationId, staffId, role, today)
+      : Promise.resolve(null),
   ]);
   const staffWarnings = {
     consecutiveDayViolations: orgWarnings.consecutiveDayViolations.filter((v) => v.staffId === staffId),
@@ -41,8 +46,9 @@ export default async function StaffDetailPage({
     <div className="flex flex-1 flex-col">
       <h1 className="px-4 pt-6 text-xl font-bold">{staff.name}</h1>
 
-      <div className="mt-4">
+      <div className="mt-4 flex flex-col gap-3">
         <LaborWarningsList warnings={staffWarnings} />
+        {payrollEstimate && <PayrollEstimate estimate={payrollEstimate} />}
       </div>
 
       <section className="flex flex-col gap-2 py-6">

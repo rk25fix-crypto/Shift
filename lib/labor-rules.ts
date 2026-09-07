@@ -59,7 +59,8 @@ export interface BreakViolation {
   requiredBreakMinutes: number;
 }
 
-function workedHours(shift: WorkedShift): number {
+/** Net worked hours for one shift — gross clock time minus the recorded break. */
+export function workedHours(shift: WorkedShift): number {
   const ms = new Date(shift.endsAt).getTime() - new Date(shift.startsAt).getTime();
   return Math.max(0, ms / 1000 / 60 / 60 - shift.breakMinutes / 60);
 }
