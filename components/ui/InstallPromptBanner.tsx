@@ -65,7 +65,7 @@ export function InstallPromptBanner() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t border-gray-200 bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-lg">
+    <div className="flex flex-col gap-2 border-t border-gray-200 bg-white p-4 shadow-lg">
       <p className="text-sm font-medium">ホーム画面に追加すると、アプリのように使えます</p>
       <ol className="list-inside list-decimal text-sm text-gray-600">
         <li>画面下の共有ボタン(□に↑)をタップ</li>
