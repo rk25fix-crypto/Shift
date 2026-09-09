@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
+import { toUserFacingError } from "@/lib/db/errors";
 import { staff, staffCompensation } from "@/drizzle/schema";
 import type { MembershipRole } from "@/lib/org/current";
 
@@ -45,7 +46,7 @@ export async function createStaffCore(
       });
     }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+    return { error: toUserFacingError(err, "保存に失敗しました") };
   }
 
   return { error: null };
@@ -92,7 +93,7 @@ export async function updateStaffCore(
         });
     }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+    return { error: toUserFacingError(err, "保存に失敗しました") };
   }
 
   return { error: null };

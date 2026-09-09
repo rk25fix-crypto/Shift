@@ -1,5 +1,6 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
+import { toUserFacingError } from "@/lib/db/errors";
 import { isValidIsoDate, datesInRange, monthOf } from "@/lib/date";
 import { generateShifts, type UnfilledShift } from "@/lib/shift-generator";
 import { listStaff } from "@/lib/staff/queries";
@@ -126,7 +127,7 @@ export async function generateDraftShifts(
       ]);
     }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "生成に失敗しました" };
+    return { error: toUserFacingError(err, "生成に失敗しました") };
   }
 
   return {
@@ -161,7 +162,7 @@ export async function confirmDraftShifts(
         ),
       );
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "確定に失敗しました" };
+    return { error: toUserFacingError(err, "確定に失敗しました") };
   }
 
   return { error: null };
@@ -191,7 +192,7 @@ export async function discardDraftShifts(
         ),
       );
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "破棄に失敗しました" };
+    return { error: toUserFacingError(err, "破棄に失敗しました") };
   }
 
   return { error: null };

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
+import { errorChainMatches, logError, toUserFacingError } from "@/lib/db/errors";
 import { shiftTypes } from "@/drizzle/schema";
 
 export interface ShiftTypeInput {
@@ -48,7 +49,11 @@ export async function createShiftTypeCore(
       sortOrder: input.sortOrder,
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+    return {
+      error: toUserFacingError(err, "保存に失敗しました", {
+        onUniqueConstraint: "このコードは既に使われています",
+      }),
+    };
   }
 
   return { error: null };
@@ -83,7 +88,11 @@ export async function updateShiftTypeCore(
       })
       .where(and(eq(shiftTypes.id, shiftTypeId), eq(shiftTypes.organizationId, organizationId)));
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "保存に失敗しました" };
+    return {
+      error: toUserFacingError(err, "保存に失敗しました", {
+        onUniqueConstraint: "このコードは既に使われています",
+      }),
+    };
   }
 
   return { error: null };
@@ -102,13 +111,14 @@ export async function deleteShiftTypeCore(
   } catch (err) {
     // shift_assignments references shift_types with ON DELETE RESTRICT, so a
     // shift type still in use surfaces as a foreign-key violation here rather
-    // than silently orphaning schedule data.
-    const message = err instanceof Error ? err.message : "";
-    return {
-      error: /FOREIGN KEY|SQLITE_CONSTRAINT/i.test(message)
-        ? "このシフト種別は使用中のため削除できません"
-        : message || "削除に失敗しました",
-    };
+    // than silently orphaning schedule data. The real SQLite reason is
+    // nested under err.cause, not err.message (see lib/db/errors.ts), so the
+    // check has to walk the whole chain.
+    if (errorChainMatches(err, /FOREIGN KEY|SQLITE_CONSTRAINT/i)) {
+      logError(err);
+      return { error: "このシフト種別は使用中のため削除できません" };
+    }
+    return { error: toUserFacingError(err, "削除に失敗しました") };
   }
 
   return { error: null };

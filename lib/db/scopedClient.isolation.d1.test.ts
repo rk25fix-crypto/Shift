@@ -270,6 +270,22 @@ describe("createShiftTypeCore/updateShiftTypeCore/deleteShiftTypeCore isolation 
     sortOrder: 0,
   };
 
+  it("deleteShiftTypeCore reports an in-use shift type with the friendly message, against a real FK violation", async () => {
+    // Regression test: the FK-in-use check used to test err.message only,
+    // but D1/Drizzle nest the real SQLite reason under err.cause (see
+    // lib/db/errors.ts) — err.message is always the generic "Failed query:
+    // ..." string, so the old check never actually matched and this always
+    // fell through to leaking the raw driver error instead. shiftTypeA is
+    // referenced by the confirmed shift_assignments row this file's
+    // beforeAll fixture inserts on 2026-06-01, so this exercises a real FK
+    // constraint failure, not a synthetic one.
+    const result = await deleteShiftTypeCore(orgA.id, shiftTypeA.id);
+    expect(result.error).toBe("このシフト種別は使用中のため削除できません");
+
+    // Never actually deleted — later tests in this file still depend on it.
+    expect(await getShiftType(orgA.id, shiftTypeA.id)).not.toBeNull();
+  });
+
   it("createShiftTypeCore only ever writes into the calling org", async () => {
     const result = await createShiftTypeCore(orgA.id, { ...baseInput, code: "作成テ" });
     expect(result.error).toBeNull();
