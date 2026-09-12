@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
+import { auditLogInsertStatement } from "@/lib/audit/write";
 import { isValidIsoDate } from "@/lib/date";
 import { shiftAssignments, staff, timeOffRequests } from "@/drizzle/schema";
 
@@ -23,6 +24,7 @@ export async function setTimeOffRequest(
   organizationId: string,
   staffId: string,
   date: string,
+  actorUserId: string | null = null,
 ): Promise<{ error: string | null }> {
   if (!isValidIsoDate(date)) return { error: "日付が不正です" };
 
@@ -54,6 +56,10 @@ export async function setTimeOffRequest(
           target: [timeOffRequests.staffId, timeOffRequests.date],
           set: { status: "acknowledged" },
         }),
+      auditLogInsertStatement(db, organizationId, actorUserId, "update", "shift_assignment", staffId, {
+        date,
+        timeOff: true,
+      }),
     ]);
   } catch (err) {
     return { error: toUserFacingError(err, "保存に失敗しました") };

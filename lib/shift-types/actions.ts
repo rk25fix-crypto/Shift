@@ -1,7 +1,9 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { isManager, requireCurrentMembership } from "@/lib/org/current";
+import { auth } from "@/lib/auth/config";
 import {
   createShiftTypeCore,
   deleteShiftTypeCore,
@@ -17,7 +19,8 @@ export async function createShiftType(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const result = await createShiftTypeCore(organizationId, input);
+  const session = await auth.api.getSession({ headers: await headers() });
+  const result = await createShiftTypeCore(organizationId, input, session?.user.id ?? null);
   if (!result.error) revalidatePath("/settings/shift-types");
   return result;
 }
@@ -29,7 +32,13 @@ export async function updateShiftType(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const result = await updateShiftTypeCore(organizationId, shiftTypeId, input);
+  const session = await auth.api.getSession({ headers: await headers() });
+  const result = await updateShiftTypeCore(
+    organizationId,
+    shiftTypeId,
+    input,
+    session?.user.id ?? null,
+  );
   if (!result.error) revalidatePath("/settings/shift-types");
   return result;
 }
@@ -38,7 +47,8 @@ export async function deleteShiftType(shiftTypeId: string): Promise<{ error: str
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const result = await deleteShiftTypeCore(organizationId, shiftTypeId);
+  const session = await auth.api.getSession({ headers: await headers() });
+  const result = await deleteShiftTypeCore(organizationId, shiftTypeId, session?.user.id ?? null);
   if (!result.error) revalidatePath("/settings/shift-types");
   return result;
 }

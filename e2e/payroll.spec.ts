@@ -36,8 +36,18 @@ test.describe("payroll estimate", () => {
     await page.goto("/staff");
     await page.getByRole("link", { name: "テスト四郎" }).click();
     await expect(page.getByText("今月の給与概算")).toBeVisible();
-    await expect(page.getByText("¥8,000")).toBeVisible();
-    await expect(page.getByText("8時間 × 時給¥1,000")).toBeVisible();
+    // lib/payroll.ts assumes Sunday is the 法定休日 (+35%) — whatever day
+    // "today" actually is when this test runs changes the expected total,
+    // so this computes the same thing production does instead of hardcoding
+    // a value that would only be right 6 days out of 7.
+    const isSunday = new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo", weekday: "short" }) === "Sun";
+    if (isSunday) {
+      await expect(page.getByText("¥10,800")).toBeVisible();
+      await expect(page.getByText("8時間 × 時給¥1,000(内 休日8h 割増を含む)")).toBeVisible();
+    } else {
+      await expect(page.getByText("¥8,000")).toBeVisible();
+      await expect(page.getByText("8時間 × 時給¥1,000")).toBeVisible();
+    }
   });
 
   test("no payroll section appears until an hourly wage is set", async ({

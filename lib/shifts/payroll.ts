@@ -1,5 +1,5 @@
 import type { MembershipRole } from "@/lib/org/current";
-import { estimatePayroll } from "@/lib/payroll";
+import { estimatePayroll, type PayrollPremiumBreakdown } from "@/lib/payroll";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
 import { toWorkedShifts } from "@/lib/shifts/worked-shift";
@@ -9,6 +9,7 @@ export interface StaffPayrollEstimate {
   hourlyWage: number;
   totalHours: number;
   estimatedPay: number;
+  premiums: PayrollPremiumBreakdown;
 }
 
 /**
@@ -33,7 +34,7 @@ export async function getStaffPayrollEstimate(
   ]);
   const shiftTypesById = new Map(shiftTypes.map((t) => [t.id, t]));
   const workedShifts = toWorkedShifts(assignments, shiftTypesById);
-  const { totalHours, estimatedPay } = estimatePayroll(workedShifts, hourlyWage);
+  const { totalHours, estimatedPay, premiums } = estimatePayroll(workedShifts, hourlyWage);
 
-  return { hourlyWage, totalHours, estimatedPay };
+  return { hourlyWage, totalHours, estimatedPay, premiums };
 }

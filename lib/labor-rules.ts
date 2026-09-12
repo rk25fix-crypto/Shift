@@ -234,7 +234,8 @@ function daysBetween(a: string, b: string): number {
   return Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / msPerDay);
 }
 
-function isoWeekKey(date: string): string {
+/** The Monday (YYYY-MM-DD) starting the ISO week (Mon-Sun) containing `date` — a grouping key, not a display value. */
+export function isoWeekKey(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
   const day = (d.getUTCDay() + 6) % 7; // Monday = 0
   d.setUTCDate(d.getUTCDate() - day);

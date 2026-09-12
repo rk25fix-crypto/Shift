@@ -32,6 +32,7 @@ const eslintConfig = defineConfig([
       "lib/auth/config.ts",
       "lib/auth/actions.ts",
       "lib/org/current.ts",
+      "lib/org/actions.ts",
       "lib/db/scopedClient.isolation.d1.test.ts",
       "app/api/stripe/webhook/route.ts",
       "lib/admin/**/*.ts",

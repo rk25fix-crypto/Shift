@@ -1,8 +1,9 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/config";
 import { getRawDb } from "@/lib/db/raw";
-import { memberships } from "@/drizzle/schema";
+import { memberships, organizations } from "@/drizzle/schema";
+import { pickCurrentMembership } from "@/lib/org/pick-membership";
 
 export type MembershipRole = "owner" | "admin" | "staff";
 
@@ -11,11 +12,22 @@ export interface CurrentMembership {
   role: MembershipRole;
 }
 
+export interface OrgMembershipOption {
+  organizationId: string;
+  organizationName: string;
+  role: MembershipRole;
+}
+
+/** Which of the user's orgs to treat as "current" — set by lib/org/actions.ts's switchOrganization(). */
+export const CURRENT_ORG_COOKIE = "shift_current_org";
+
 /**
- * Resolves the logged-in user's organization + role. A user can belong to
- * more than one organization (docs/plan.md, "1ユーザーが複数事業所を持つ
- * ケース"), but the org switcher is Phase 3 — until then every page/action
- * uses the first membership found, via this single shared lookup.
+ * Resolves the logged-in user's current organization + role. A user can
+ * belong to more than one organization (docs/plan.md, "1ユーザーが複数事業
+ * 所を持つケース") — which one is "current" follows the CURRENT_ORG_COOKIE
+ * set by the org switcher (components/settings/OrgSwitcher.tsx), falling
+ * back to the first membership when there's no cookie or it names an org
+ * this user isn't (or is no longer) a member of.
  *
  * Queries `memberships` directly via the raw D1 client (allow-listed in
  * eslint.config.mjs) because resolving organizationId is the one thing this
@@ -26,13 +38,32 @@ export async function getCurrentMembership(): Promise<CurrentMembership | null> 
   if (!session) return null;
 
   const db = getRawDb();
-  const [row] = await db
+  const rows = await db
     .select({ organizationId: memberships.organizationId, role: memberships.role })
     .from(memberships)
     .where(eq(memberships.userId, session.user.id))
-    .limit(1);
+    .orderBy(memberships.createdAt);
 
-  return row ?? null;
+  const preferredOrgId = (await cookies()).get(CURRENT_ORG_COOKIE)?.value;
+  return pickCurrentMembership(rows, preferredOrgId);
+}
+
+/** Every organization the logged-in user belongs to, for the org switcher — see components/settings/OrgSwitcher.tsx. */
+export async function listMembershipsForCurrentUser(): Promise<OrgMembershipOption[]> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return [];
+
+  const db = getRawDb();
+  return db
+    .select({
+      organizationId: memberships.organizationId,
+      organizationName: organizations.name,
+      role: memberships.role,
+    })
+    .from(memberships)
+    .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+    .where(eq(memberships.userId, session.user.id))
+    .orderBy(memberships.createdAt);
 }
 
 /** Same as getCurrentMembership(), but throws for pages/actions that require an org context to render at all. */

@@ -1,19 +1,31 @@
 import Link from "next/link";
-import { requireCurrentMembership } from "@/lib/org/current";
+import { isManager, listMembershipsForCurrentUser, requireCurrentMembership } from "@/lib/org/current";
 import { PrintLinkForm } from "@/components/shift/PrintLinkForm";
+import { OrgSwitcher } from "@/components/settings/OrgSwitcher";
 
 export default async function OrganizationSettingsPage() {
-  const { organizationId } = await requireCurrentMembership();
+  const { organizationId, role } = await requireCurrentMembership();
+  const allMemberships = await listMembershipsForCurrentUser();
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 py-6">
       <h1 className="text-xl font-bold">設定</h1>
+      {allMemberships.length > 1 && (
+        <OrgSwitcher memberships={allMemberships} currentOrgId={organizationId} />
+      )}
       <ul className="flex flex-col gap-2 text-sm">
         <li>
           <Link href="/settings/shift-types" className="text-indigo-600">
             シフト種別の設定
           </Link>
         </li>
+        {isManager(role) && (
+          <li>
+            <Link href="/settings/audit-log" className="text-indigo-600">
+              変更履歴
+            </Link>
+          </li>
+        )}
         <li>
           <Link href="/billing" className="text-indigo-600">
             お支払い・プラン

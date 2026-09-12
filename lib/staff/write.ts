@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
+import { recordAuditLog } from "@/lib/audit/write";
 import { staff, staffCompensation } from "@/drizzle/schema";
 import type { MembershipRole } from "@/lib/org/current";
 
@@ -23,6 +24,7 @@ export async function createStaffCore(
   organizationId: string,
   role: MembershipRole,
   input: StaffInput,
+  actorUserId: string | null = null,
 ): Promise<{ error: string | null }> {
   const { db } = getScopedDb(organizationId);
 
@@ -45,6 +47,10 @@ export async function createStaffCore(
         hourlyWage: input.hourlyWage,
       });
     }
+
+    await recordAuditLog(organizationId, actorUserId, "create", "staff", created.id, {
+      name: input.name,
+    });
   } catch (err) {
     return { error: toUserFacingError(err, "保存に失敗しました") };
   }
@@ -57,6 +63,7 @@ export async function updateStaffCore(
   role: MembershipRole,
   staffId: string,
   input: StaffInput,
+  actorUserId: string | null = null,
 ): Promise<{ error: string | null }> {
   const { db } = getScopedDb(organizationId);
 
@@ -92,6 +99,10 @@ export async function updateStaffCore(
           set: { hourlyWage: input.hourlyWage, updatedAt: new Date() },
         });
     }
+
+    await recordAuditLog(organizationId, actorUserId, "update", "staff", staffId, {
+      name: input.name,
+    });
   } catch (err) {
     return { error: toUserFacingError(err, "保存に失敗しました") };
   }
@@ -102,12 +113,17 @@ export async function updateStaffCore(
 export async function deactivateStaffCore(
   organizationId: string,
   staffId: string,
+  actorUserId: string | null = null,
 ): Promise<{ error: string | null }> {
   const { db } = getScopedDb(organizationId);
   await db
     .update(staff)
     .set({ isActive: false })
     .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+
+  await recordAuditLog(organizationId, actorUserId, "update", "staff", staffId, {
+    isActive: false,
+  });
 
   return { error: null };
 }

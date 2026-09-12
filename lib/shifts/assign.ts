@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
+import { auditLogInsertStatement } from "@/lib/audit/write";
 import { isValidIsoDate } from "@/lib/date";
 import { shiftAssignments, shiftTypes, staff, timeOffRequests } from "@/drizzle/schema";
 
@@ -95,9 +96,20 @@ export async function setShiftAssignment(
           status: "confirmed",
           createdBy: actorUserId,
         }),
+        auditLogInsertStatement(db, organizationId, actorUserId, "update", "shift_assignment", staffId, {
+          date,
+          shiftTypeId,
+        }),
       ]);
     } else {
-      await db.batch([clearAssignment, clearTimeOff]);
+      await db.batch([
+        clearAssignment,
+        clearTimeOff,
+        auditLogInsertStatement(db, organizationId, actorUserId, "update", "shift_assignment", staffId, {
+          date,
+          shiftTypeId: null,
+        }),
+      ]);
     }
   } catch (err) {
     return { error: toUserFacingError(err, "保存に失敗しました") };
