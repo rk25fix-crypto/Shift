@@ -38,55 +38,69 @@ export async function setShiftAssignment(
   // manager could pass another org's staffId/shiftTypeId and create a
   // cross-tenant row (D1 has no RLS to catch it; see
   // lib/db/scopedClient.ts). Resolving both against this org first is the
-  // only backstop.
-  const [staffRow] = await db
-    .select({ id: staff.id })
-    .from(staff)
-    .where(and(eq(staff.organizationId, organizationId), eq(staff.id, staffId)));
-  if (!staffRow) return { error: "スタッフが見つかりません" };
-
-  if (shiftTypeId) {
-    const [shiftTypeRow] = await db
-      .select({ id: shiftTypes.id })
-      .from(shiftTypes)
-      .where(and(eq(shiftTypes.organizationId, organizationId), eq(shiftTypes.id, shiftTypeId)));
-    if (!shiftTypeRow) return { error: "シフト種別が見つかりません" };
-  }
-
-  await db.batch([
+  // only backstop. Run in parallel (not one-then-the-other) — this is the
+  // hot path for the most-tapped interaction in the app, so every avoidable
+  // round-trip here is felt directly as UI lag.
+  const [[staffRow], shiftTypeRows] = await Promise.all([
     db
-      .delete(shiftAssignments)
-      .where(
-        and(
-          eq(shiftAssignments.organizationId, organizationId),
-          eq(shiftAssignments.staffId, staffId),
-          eq(shiftAssignments.date, date),
-        ),
-      ),
-    db
-      .delete(timeOffRequests)
-      .where(
-        and(
-          eq(timeOffRequests.organizationId, organizationId),
-          eq(timeOffRequests.staffId, staffId),
-          eq(timeOffRequests.date, date),
-        ),
-      ),
+      .select({ id: staff.id })
+      .from(staff)
+      .where(and(eq(staff.organizationId, organizationId), eq(staff.id, staffId))),
+    shiftTypeId
+      ? db
+          .select({ id: shiftTypes.id })
+          .from(shiftTypes)
+          .where(and(eq(shiftTypes.organizationId, organizationId), eq(shiftTypes.id, shiftTypeId)))
+      : Promise.resolve([]),
   ]);
+  if (!staffRow) return { error: "スタッフが見つかりません" };
+  if (shiftTypeId && !shiftTypeRows[0]) return { error: "シフト種別が見つかりません" };
 
-  if (shiftTypeId) {
-    try {
-      await db.insert(shiftAssignments).values({
-        organizationId,
-        staffId,
-        shiftTypeId,
-        date,
-        status: "confirmed",
-        createdBy: actorUserId,
-      });
-    } catch (err) {
-      return { error: toUserFacingError(err, "保存に失敗しました") };
+  const clearAssignment = db
+    .delete(shiftAssignments)
+    .where(
+      and(
+        eq(shiftAssignments.organizationId, organizationId),
+        eq(shiftAssignments.staffId, staffId),
+        eq(shiftAssignments.date, date),
+      ),
+    );
+  const clearTimeOff = db
+    .delete(timeOffRequests)
+    .where(
+      and(
+        eq(timeOffRequests.organizationId, organizationId),
+        eq(timeOffRequests.staffId, staffId),
+        eq(timeOffRequests.date, date),
+      ),
+    );
+
+  try {
+    if (shiftTypeId) {
+      // One round-trip instead of two: the clear-then-insert used to be a
+      // separate batch() call followed by a separate insert() — D1's
+      // batch() runs a whole array atomically in one request, so folding
+      // the insert into the same batch as the deletes is both fewer
+      // round-trips and (as a bonus) removes the brief window where the
+      // old code had already cleared the cell but not yet written the new
+      // shift.
+      await db.batch([
+        clearAssignment,
+        clearTimeOff,
+        db.insert(shiftAssignments).values({
+          organizationId,
+          staffId,
+          shiftTypeId,
+          date,
+          status: "confirmed",
+          createdBy: actorUserId,
+        }),
+      ]);
+    } else {
+      await db.batch([clearAssignment, clearTimeOff]);
     }
+  } catch (err) {
+    return { error: toUserFacingError(err, "保存に失敗しました") };
   }
 
   return { error: null };

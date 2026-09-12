@@ -389,6 +389,26 @@ describe("setShiftAssignment isolation (write path)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].staffId).toBe(staffA.id);
   });
+
+  it("re-assigning the identical shift type to the same staff+date leaves exactly one row", async () => {
+    // Regression test for the clear+insert batching change: the clear
+    // (delete) and the insert now run in the SAME db.batch() call rather
+    // than as two separate round-trips. D1 executes a batch's statements
+    // in array order within one implicit transaction, so the delete still
+    // removes the existing (staffId, date, shiftTypeId) row before the
+    // insert runs — even when the new row is identical to the one being
+    // cleared, this must not violate the unique constraint or leave zero
+    // rows behind.
+    const first = await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-19", shiftTypeA.id);
+    expect(first.error).toBeNull();
+
+    const second = await setShiftAssignment(orgA.id, null, staffA.id, "2026-06-19", shiftTypeA.id);
+    expect(second.error).toBeNull();
+
+    const rows = await getAssignmentsForDate(orgA.id, "2026-06-19");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shiftTypeId).toBe(shiftTypeA.id);
+  });
 });
 
 describe("time_off_requests isolation", () => {
@@ -546,6 +566,58 @@ describe("generateDraftShifts/confirmDraftShifts/discardDraftShifts isolation (w
     // (e.g. staff/shift-type listing counts) run after this one.
     await discardDraftShifts(orgA.id, start, end);
     await db.delete(shiftTypes).where(eq(shiftTypes.id, manyRequiredType.id));
+    for (const s of extraStaff) {
+      await db.delete(staff).where(eq(staff.id, s.id));
+    }
+  });
+
+  it("generates a full calendar month in one db.batch() call without hitting a D1 statement-count ceiling", async () => {
+    // Task #50 (monthly auto-generation) turns one generateDraftShifts call
+    // into a much bigger db.batch() than any week-scoped call ever produced
+    // — Cloudflare's docs don't publish a batch statement-count limit (only
+    // the 100-bound-parameter-per-statement one INSERT_CHUNK_SIZE already
+    // accounts for), so this is the empirical check that a real 31-day
+    // month's worth of chunks still commits in one batch against real D1.
+    const db = getRawDb();
+    const extraStaff = await db
+      .insert(staff)
+      .values([
+        { organizationId: orgA.id, name: "スタッフF" },
+        { organizationId: orgA.id, name: "スタッフG" },
+        { organizationId: orgA.id, name: "スタッフH" },
+      ])
+      .returning({ id: staff.id });
+
+    const [monthType] = await db
+      .insert(shiftTypes)
+      .values({
+        organizationId: orgA.id,
+        code: "月1",
+        name: "月次テスト用",
+        startTime: "09:00",
+        endTime: "17:00",
+        isRequired: true,
+        requiredCount: 3,
+      })
+      .returning({ id: shiftTypes.id });
+
+    const start = "2026-09-01";
+    const end = "2026-10-01"; // 30 days in September
+
+    const result = await generateDraftShifts(orgA.id, start, end);
+    expect(result.error).toBeNull();
+    // (1 from shiftTypeA + 3 from monthType) * 30 days = 120 rows, chunked
+    // at 12/insert => 10 insert statements + 1 delete = 11 in one batch().
+    expect(result.draftCount).toBe(120);
+    expect(result.unfilledShifts).toHaveLength(0);
+
+    const drafts = await getAssignmentsForOrgRange(orgA.id, start, end, { includeDrafts: true });
+    expect(drafts).toHaveLength(120);
+    expect(drafts.every((a) => a.status === "draft")).toBe(true);
+
+    // Cleanup so this fixture doesn't affect any other test in the file.
+    await discardDraftShifts(orgA.id, start, end);
+    await db.delete(shiftTypes).where(eq(shiftTypes.id, monthType.id));
     for (const s of extraStaff) {
       await db.delete(staff).where(eq(staff.id, s.id));
     }

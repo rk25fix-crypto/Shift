@@ -17,6 +17,8 @@ interface WeekGridProps {
   timeOff: TimeOff[];
   /** Staff with a 勤務ルール警告 overlapping this week (lib/shifts/labor-warnings.ts) — shown as a badge next to their name. */
   staffIdsWithWarnings?: Set<string>;
+  /** Dates where a required shift type doesn't yet have enough staff assigned (lib/shifts/unfilled-dates.ts) — shown as a badge on the date header. */
+  unfilledDates?: Set<string>;
 }
 
 /** 7-day × staff grid — a horizontally-scrollable week overview, unlike the Today view's single-date focus (docs/plan.md, "週グリッド"). */
@@ -27,6 +29,7 @@ export function WeekGrid({
   assignments,
   timeOff,
   staffIdsWithWarnings,
+  unfilledDates,
 }: WeekGridProps) {
   const [openCell, setOpenCell] = useState<{ staffId: string; date: string } | null>(null);
 
@@ -61,7 +64,17 @@ export function WeekGrid({
               </th>
               {dates.map((date) => (
                 <th key={date} className="px-2 py-2 text-center font-medium text-gray-500">
-                  {formatDateJapanese(date).replace(/^\d+月/, "")}
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>{formatDateJapanese(date).replace(/^\d+月/, "")}</span>
+                    {unfilledDates?.has(date) && (
+                      <span
+                        aria-label="人数不足の日"
+                        className="rounded-full bg-red-100 px-1.5 text-[10px] font-medium text-red-700"
+                      >
+                        不足
+                      </span>
+                    )}
+                  </div>
                 </th>
               ))}
             </tr>

@@ -11,7 +11,7 @@ import {
   type HoursViolation,
 } from "@/lib/labor-rules";
 import { getWorkRuleSettings } from "@/lib/org/queries";
-import { listShiftTypes } from "@/lib/shift-types/queries";
+import { listShiftTypes, type ShiftTypeRecord } from "@/lib/shift-types/queries";
 import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { toWorkedShifts } from "@/lib/shifts/worked-shift";
 
@@ -42,14 +42,30 @@ export async function getLaborWarnings(
   organizationId: string,
   displayStart: string,
   displayEndExclusive: string,
-  options?: { includeDrafts?: boolean },
+  options?: {
+    includeDrafts?: boolean;
+    /**
+     * Pass this when the caller already fetched (or is already fetching)
+     * the org's shift types for its own purposes (nearly every page that
+     * calls getLaborWarnings does) — skips a fully redundant D1 round-trip
+     * for the exact same rows. Each of these round-trips is cheap on its
+     * own, but they compound: the week and staff-detail pages were each
+     * making 2-4 duplicate queries just from this one call before this
+     * option existed. Accepts a promise (not just the resolved array) so a
+     * caller can pass its own in-flight `listShiftTypes()` call straight
+     * into this function's `Promise.all` below instead of awaiting it
+     * first — awaiting it first would turn a parallel fetch into a serial
+     * one, undoing the point of avoiding the duplicate query.
+     */
+    shiftTypes?: ShiftTypeRecord[] | Promise<ShiftTypeRecord[]>;
+  },
 ): Promise<LaborWarnings> {
   const settings = await getWorkRuleSettings(organizationId);
   const lookbackDays = Math.max(MIN_LOOKBACK_DAYS, settings.maxConsecutiveDays);
   const lookbackStart = addDays(displayStart, -lookbackDays);
 
   const [shiftTypes, assignments] = await Promise.all([
-    listShiftTypes(organizationId),
+    options?.shiftTypes ?? listShiftTypes(organizationId),
     getAssignmentsForOrgRange(organizationId, lookbackStart, displayEndExclusive, options),
   ]);
 

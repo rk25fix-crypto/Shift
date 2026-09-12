@@ -25,6 +25,21 @@ export const auth = betterAuth({
     provider: "sqlite",
     schema: authSchema,
   }),
+  // Every page load and every Server Action calls auth.api.getSession() —
+  // it's on the critical path for literally everything this app does.
+  // Without this, that's a full D1 round-trip just to confirm "is this
+  // still a valid session" before the app-specific work (its own org/role
+  // lookup in lib/org/current.ts, unaffected by this cache) even starts.
+  // With it, Better Auth signs the session into a cookie and only re-checks
+  // the DB once maxAge elapses — 5 minutes is Better Auth's own default,
+  // a reasonable trade-off here (this app's sessions aren't revoked
+  // mid-session in any latency-sensitive way).
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
+  },
   emailAndPassword: { enabled: false },
   plugins: [
     emailOTP({

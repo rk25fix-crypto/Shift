@@ -4,7 +4,8 @@ import { getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
-import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
+import { estimatePayroll } from "@/lib/payroll";
+import { toWorkedShifts } from "@/lib/shifts/worked-shift";
 import { monthOf, nextMonth, todayInTimezone } from "@/lib/date";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffMonthShifts } from "@/components/staff/StaffMonthShifts";
@@ -20,27 +21,45 @@ export default async function StaffDetailPage({
   const { staffId } = await params;
   const { organizationId, role } = await requireCurrentMembership();
 
-  const staff = await getStaff(organizationId, staffId);
-  if (!staff) notFound();
-
   const canEditCompensation = role === "owner";
   const today = todayInTimezone();
   const monthStart = `${monthOf(today)}-01`;
   const monthEndExclusive = `${nextMonth(monthOf(today))}-01`;
-  const [shiftTypes, hourlyWage, monthAssignments, orgWarnings, payrollEstimate] = await Promise.all([
+  // shiftTypes is fetched once and reused below (StaffMonthShifts, StaffForm,
+  // labor warnings, and the payroll estimate all need it) — each of those
+  // used to fetch it separately, turning one page load into a pile of
+  // identical D1 round-trips.
+  const [staff, shiftTypes] = await Promise.all([
+    getStaff(organizationId, staffId),
     listShiftTypes(organizationId),
+  ]);
+  if (!staff) notFound();
+
+  const [hourlyWage, monthAssignments, orgWarnings] = await Promise.all([
     getStaffHourlyWage(organizationId, staffId, role),
     getAssignmentsForStaffMonth(organizationId, staffId, today),
-    getLaborWarnings(organizationId, monthStart, monthEndExclusive),
-    canEditCompensation
-      ? getStaffPayrollEstimate(organizationId, staffId, role, today)
-      : Promise.resolve(null),
+    getLaborWarnings(organizationId, monthStart, monthEndExclusive, { shiftTypes }),
   ]);
   const staffWarnings = {
     consecutiveDayViolations: orgWarnings.consecutiveDayViolations.filter((v) => v.staffId === staffId),
     hoursViolations: orgWarnings.hoursViolations.filter((v) => v.staffId === staffId),
     breakViolations: orgWarnings.breakViolations.filter((v) => v.staffId === staffId),
   };
+  // Computed from data already fetched above rather than calling
+  // getStaffPayrollEstimate (which would re-fetch the wage/shift-types/
+  // assignments a second time) — hourlyWage above already went through the
+  // same owner-only-gated getStaffHourlyWage() this reuses, so this isn't
+  // skipping that check, just not repeating it.
+  const payrollEstimate =
+    canEditCompensation && hourlyWage != null
+      ? {
+          hourlyWage,
+          ...estimatePayroll(
+            toWorkedShifts(monthAssignments, new Map(shiftTypes.map((t) => [t.id, t]))),
+            hourlyWage,
+          ),
+        }
+      : null;
 
   return (
     <div className="flex flex-1 flex-col">
