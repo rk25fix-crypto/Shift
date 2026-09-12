@@ -59,7 +59,8 @@ export interface BreakViolation {
   requiredBreakMinutes: number;
 }
 
-function workedHours(shift: WorkedShift): number {
+/** Net worked hours for one shift — gross clock time minus the recorded break. */
+export function workedHours(shift: WorkedShift): number {
   const ms = new Date(shift.endsAt).getTime() - new Date(shift.startsAt).getTime();
   return Math.max(0, ms / 1000 / 60 / 60 - shift.breakMinutes / 60);
 }
@@ -184,6 +185,39 @@ export function detectBreakViolations(
   return violations;
 }
 
+/**
+ * The detect* functions above need a lookback window (e.g. the prior 7
+ * days) to correctly catch a violation that started before the range being
+ * displayed — but that also means they return violations the caller never
+ * asked to see (e.g. a consecutive-day streak entirely within last month).
+ * These filter the detected violations down to ones that actually overlap
+ * `[displayStart, displayEndExclusive)`, for callers that fetched a wider
+ * range than they intend to show.
+ */
+export function filterConsecutiveDayViolationsToRange(
+  violations: ConsecutiveDaysViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): ConsecutiveDaysViolation[] {
+  return violations.filter((v) => v.endDate >= displayStart && v.startDate < displayEndExclusive);
+}
+
+export function filterHoursViolationsToRange(
+  violations: HoursViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): HoursViolation[] {
+  return violations.filter((v) => v.periodEnd >= displayStart && v.periodStart < displayEndExclusive);
+}
+
+export function filterBreakViolationsToRange(
+  violations: BreakViolation[],
+  displayStart: string,
+  displayEndExclusive: string,
+): BreakViolation[] {
+  return violations.filter((v) => v.date >= displayStart && v.date < displayEndExclusive);
+}
+
 function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const item of items) {
@@ -200,7 +234,8 @@ function daysBetween(a: string, b: string): number {
   return Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / msPerDay);
 }
 
-function isoWeekKey(date: string): string {
+/** The Monday (YYYY-MM-DD) starting the ISO week (Mon-Sun) containing `date` — a grouping key, not a display value. */
+export function isoWeekKey(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
   const day = (d.getUTCDay() + 6) % 7; // Monday = 0
   d.setUTCDate(d.getUTCDate() - day);

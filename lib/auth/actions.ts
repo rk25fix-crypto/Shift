@@ -4,12 +4,20 @@ import { headers } from "next/headers";
 import { APIError } from "better-auth/api";
 import { auth } from "@/lib/auth/config";
 import { getRawDb } from "@/lib/db/raw";
+import { toUserFacingError } from "@/lib/db/errors";
 import { organizations, memberships, subscriptions } from "@/drizzle/schema";
 
+/**
+ * Better Auth's APIError.body.message is deliberately user-facing text (e.g.
+ * "invalid OTP") and safe to show as-is. Anything else — a raw D1/Drizzle
+ * error from provisionOrganization's inserts, an unexpected failure inside
+ * Better Auth's own DB adapter or email hook (lib/auth/config.ts) — is not,
+ * for the same reason as lib/db/errors.ts: it can contain table/column
+ * names and bound values.
+ */
 function errorMessage(err: unknown): string {
   if (err instanceof APIError) return err.body?.message ?? err.message;
-  if (err instanceof Error) return err.message;
-  return "エラーが発生しました";
+  return toUserFacingError(err, "エラーが発生しました");
 }
 
 /**

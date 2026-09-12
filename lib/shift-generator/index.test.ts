@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { generateShifts, type GeneratorShiftType, type GeneratorStaff } from "@/lib/shift-generator";
 
-const EARLY: GeneratorShiftType = { id: "early", isRequired: true, isBalanced: true };
-const LATE: GeneratorShiftType = { id: "late", isRequired: true, isBalanced: true };
+const EARLY: GeneratorShiftType = { id: "early", isRequired: true, isBalanced: true, requiredCount: 1 };
+const LATE: GeneratorShiftType = { id: "late", isRequired: true, isBalanced: true, requiredCount: 1 };
 
 const ALICE: GeneratorStaff = { id: "alice", fixedDaysOff: [], unavailableShiftTypeIds: [] };
 const BOB: GeneratorStaff = { id: "bob", fixedDaysOff: [], unavailableShiftTypeIds: [] };
@@ -92,7 +92,7 @@ describe("generateShifts", () => {
 
     expect(result.draftAssignments).toHaveLength(0);
     expect(result.unfilledShifts).toEqual([
-      { date: "2026-06-01", shiftTypeId: "early", reason: "no_eligible_staff" },
+      { date: "2026-06-01", shiftTypeId: "early", reason: "no_eligible_staff", shortBy: 1 },
     ]);
   });
 
@@ -112,5 +112,86 @@ describe("generateShifts", () => {
 
     expect(counts.get("alice")).toBe(2);
     expect(counts.get("bob")).toBe(2);
+  });
+
+  it("assigns multiple staff to a shift type with requiredCount > 1", () => {
+    const earlyNeedsTwo: GeneratorShiftType = { ...EARLY, requiredCount: 2 };
+
+    const result = generateShifts({
+      staff: [ALICE, BOB, CAROL],
+      shiftTypes: [earlyNeedsTwo],
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [],
+    });
+
+    expect(result.unfilledShifts).toHaveLength(0);
+    const staffIds = result.draftAssignments.map((a) => a.staffId).sort();
+    expect(staffIds).toHaveLength(2);
+    // Never the same person twice for the same shift type on the same day.
+    expect(new Set(staffIds).size).toBe(2);
+  });
+
+  it("reports how many are short when requiredCount can't be fully filled", () => {
+    const earlyNeedsThree: GeneratorShiftType = { ...EARLY, requiredCount: 3 };
+
+    const result = generateShifts({
+      staff: [ALICE, BOB],
+      shiftTypes: [earlyNeedsThree],
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [],
+    });
+
+    expect(result.draftAssignments).toHaveLength(2);
+    expect(result.unfilledShifts).toEqual([
+      { date: "2026-06-01", shiftTypeId: "early", reason: "no_eligible_staff", shortBy: 1 },
+    ]);
+  });
+
+  it("seeds workload balancing from initialAssignmentCounts", () => {
+    // Without seeding, alice would be picked first (both start at 0). With
+    // alice seeded as already having worked more, bob should be chosen.
+    const result = generateShifts({
+      staff: [ALICE, BOB],
+      shiftTypes: [EARLY],
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [],
+      initialAssignmentCounts: { alice: 5, bob: 0 },
+    });
+
+    expect(result.draftAssignments).toEqual([{ staffId: "bob", shiftTypeId: "early", date: "2026-06-01" }]);
+  });
+
+  it("treats an already-confirmed assignment as filling the slot, not as extra", () => {
+    // alice is already confirmed for EARLY on 2026-06-01 — regenerating
+    // must not pile bob on top of a slot that's already full.
+    const result = generateShifts({
+      staff: [ALICE, BOB],
+      shiftTypes: [EARLY], // requiredCount: 1
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [{ staffId: "alice", shiftTypeId: "early", date: "2026-06-01" }],
+    });
+
+    expect(result.draftAssignments).toHaveLength(0);
+    expect(result.unfilledShifts).toHaveLength(0);
+  });
+
+  it("only drafts the remaining shortfall when a shift type is partially confirmed", () => {
+    const earlyNeedsTwo: GeneratorShiftType = { ...EARLY, requiredCount: 2 };
+
+    const result = generateShifts({
+      staff: [ALICE, BOB, CAROL],
+      shiftTypes: [earlyNeedsTwo],
+      dates: ["2026-06-01"],
+      timeOffRequests: [],
+      existingAssignments: [{ staffId: "alice", shiftTypeId: "early", date: "2026-06-01" }],
+    });
+
+    expect(result.draftAssignments).toHaveLength(1);
+    expect(result.draftAssignments[0].staffId).not.toBe("alice");
+    expect(result.unfilledShifts).toHaveLength(0);
   });
 });

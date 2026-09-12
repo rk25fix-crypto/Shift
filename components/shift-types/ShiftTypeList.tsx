@@ -5,7 +5,7 @@ export function ShiftTypeList({ shiftTypes }: { shiftTypes: ShiftTypeRecord[] })
   if (shiftTypes.length === 0) {
     return (
       <p className="px-4 py-6 text-sm text-gray-500">
-        まだシフト種別がありません。「+ 追加」から最初のシフトを登録してください。
+        まだシフト種別がありません。上のボタンから追加するか、「+ 追加」で自分で設定してください。
       </p>
     );
   }
@@ -25,7 +25,7 @@ export function ShiftTypeList({ shiftTypes }: { shiftTypes: ShiftTypeRecord[] })
               <p className="text-sm text-gray-500">
                 {shiftType.startTime}〜{shiftType.endTime}
                 {shiftType.crossesMidnight && "(翌日)"} ・ 休憩{shiftType.breakMinutes}分
-                {shiftType.isRequired && " ・ 必須"}
+                {shiftType.isRequired && ` ・ 必須(${shiftType.requiredCount}人)`}
               </p>
             </div>
             <span aria-hidden className="text-gray-400">
