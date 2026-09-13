@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signUpNewOrg } from "./fixtures";
+import { readTestOtp, signUpNewOrg } from "./fixtures";
 
 /**
  * Covers app/(auth)/signup/page.tsx's SignupGate: an already-logged-in
@@ -26,13 +26,11 @@ test.describe("signup revisit guard", () => {
     await page.waitForURL("/today");
   });
 
-  test("an already-logged-in visitor can deliberately add a second organization", async ({
+  test("an already-logged-in visitor can deliberately add a second organization, which becomes current", async ({
     page,
   }, testInfo) => {
-    await signUpNewOrg(page, {
-      businessName: "テスト第一希望保育園",
-      email: `e2e-signupgate2-${testInfo.testId}-${crypto.randomUUID()}@example.com`,
-    });
+    const email = `e2e-signupgate2-${testInfo.testId}-${crypto.randomUUID()}@example.com`;
+    await signUpNewOrg(page, { businessName: "テスト第一希望保育園", email });
 
     await page.goto("/signup");
 
@@ -51,9 +49,31 @@ test.describe("signup revisit guard", () => {
 
     await page.getByRole("button", { name: "別の事業所を新しく追加する" }).click();
 
-    await expect(page.getByLabel("事業所名")).toBeVisible();
+    await page.getByLabel("事業所名").fill("テスト第二希望保育園");
+    // Re-using the same email is deliberate: Better Auth's email-otp
+    // re-authenticates an existing user on verifyOtp rather than erroring,
+    // which is exactly the machinery provisionOrganization() relies on to
+    // add a second org to the *same* account instead of creating a new one.
+    await page.getByLabel("メールアドレス").fill(email);
+    await page.getByRole("button", { name: /無料で始める/ }).click();
 
+    await expect(page.getByLabel("認証コード")).toBeVisible();
+    const otp = await readTestOtp(page, email);
+    await page.getByLabel("認証コード").fill(otp);
+    await page.getByRole("button", { name: "始める" }).click();
+
+    await page.waitForURL("/today");
+
+    // The newly created org must be the one now in view, not a silent
+    // fallback to the first — see provisionOrganization()'s
+    // setCurrentOrgCookie() call (lib/auth/actions.ts).
     await page.goto("/settings/organization");
-    await expect(page.getByText("事業所を切り替え")).not.toBeVisible();
+    await expect(page.getByText("事業所を切り替え")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "テスト第二希望保育園" }),
+    ).toHaveClass(/border-indigo-600/);
+    await expect(page.getByRole("button", { name: "テスト第一希望保育園" })).not.toHaveClass(
+      /border-indigo-600/,
+    );
   });
 });

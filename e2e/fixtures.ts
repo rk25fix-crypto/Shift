@@ -9,7 +9,7 @@ import { expect, type Page } from "@playwright/test";
  * only forward vars/secrets already listed in `vars` or `secrets.required`,
  * so run `npm run e2e:server` in a separate terminal first (see README.md).
  */
-async function readTestOtp(page: Page, email: string): Promise<string> {
+export async function readTestOtp(page: Page, email: string): Promise<string> {
   const response = await page.request.get(
     `/api/test/otp?email=${encodeURIComponent(email)}`,
   );

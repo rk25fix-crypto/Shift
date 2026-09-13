@@ -22,6 +22,21 @@ export interface OrgMembershipOption {
 export const CURRENT_ORG_COOKIE = "shift_current_org";
 
 /**
+ * Shared by switchOrganization() (lib/org/actions.ts) and
+ * provisionOrganization() (lib/auth/actions.ts) so the cookie's options never
+ * drift between the two places that set it.
+ */
+export async function setCurrentOrgCookie(organizationId: string): Promise<void> {
+  (await cookies()).set(CURRENT_ORG_COOKIE, organizationId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+/**
  * Resolves the logged-in user's current organization + role. A user can
  * belong to more than one organization (docs/plan.md, "1ユーザーが複数事業
  * 所を持つケース") — which one is "current" follows the CURRENT_ORG_COOKIE

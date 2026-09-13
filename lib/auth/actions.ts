@@ -5,6 +5,7 @@ import { APIError } from "better-auth/api";
 import { auth } from "@/lib/auth/config";
 import { getRawDb } from "@/lib/db/raw";
 import { toUserFacingError } from "@/lib/db/errors";
+import { setCurrentOrgCookie } from "@/lib/org/current";
 import { organizations, memberships, subscriptions } from "@/drizzle/schema";
 
 /**
@@ -63,6 +64,12 @@ export async function verifyOtp(email: string, otp: string): Promise<{ error: st
  * creates one. What must not happen is an *accidental* second call — that's
  * handled up in app/(auth)/signup/page.tsx (SignupGate), which keeps an
  * already-logged-in visitor from reaching this form without an explicit tap.
+ *
+ * Sets CURRENT_ORG_COOKIE to the new org once it's created. Without this, a
+ * user adding a second organization would land back on the *first* one after
+ * signup — getCurrentMembership() falls back to the earliest membership when
+ * there's no cookie — making it look like nothing happened and inviting a
+ * retry that creates yet another duplicate.
  */
 export async function provisionOrganization(
   businessName: string,
@@ -90,6 +97,8 @@ export async function provisionOrganization(
         trialEndsAt,
       }),
     ]);
+
+    await setCurrentOrgCookie(org.id);
 
     return { error: null };
   } catch (err) {

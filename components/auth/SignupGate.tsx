@@ -5,8 +5,10 @@ import Link from "next/link";
 import { SignupForm } from "@/components/auth/SignupForm";
 
 /**
- * Shown instead of the signup form when the visitor already has a session
- * (e.g. an old /signup bookmark or a stray link). Requires an explicit tap
+ * Shown instead of the signup form when the visitor already has a
+ * membership (rendered by app/(auth)/signup/page.tsx when
+ * getCurrentMembership() finds one — e.g. an old /signup bookmark or a stray
+ * link). Requires an explicit tap
  * before the form appears, so a plain revisit can never silently create a
  * second, empty organization — while deliberately adding another business
  * (a real case: see the org switcher, components/settings/OrgSwitcher.tsx)
