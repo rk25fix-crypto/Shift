@@ -102,7 +102,8 @@ RLSが無い前提で、org_idの付け忘れによる事業所間データ漏�
 - Better Auth(`drizzleAdapter` + `email-otp`プラグイン)でメールOTP(6桁コード)ログインを実装。UI(`components/auth/OtpForm.tsx`、`SignupForm.tsx`)は現状のフローを維持し、内部の呼び出し先だけSupabase Auth APIからBetter Auth APIに差し替える。
 - ロールは `owner`(契約・全権限)/ `staff`(自分のシフト閲覧・休み希望・交代申請)から開始。`admin`は後回し(Supabase版の設計を踏襲)。
 - サインアップ時にorganizations/memberships/14日間トライアルのsubscriptionsを1トランザクションで作成する処理は、Better AuthのDBフック(`databaseHooks`)またはサーバーアクション内で明示的に実装する(Supabase版では1つのPostgres関数で担保していたが、D1では複数INSERTを明示的なトランザクションでまとめる)。
-- 1ユーザーが複数事業所を持つケースは `memberships` で表現可能。UI上の事業所スイッチャーはPhase 3で追加(変更なし)。
+- 1ユーザーが複数事業所を持つケースは `memberships` で表現可能。UI上の事業所スイッチャーはPhase 3で追加済み(`components/settings/OrgSwitcher.tsx`)。
+- **既知の課題と対応(2026-09-13)**: ログイン済みユーザーが`/signup`に再訪問すると、Better AuthのOTPが既存ユーザーを再認証してしまう(`verifyOtp`がエラーにならない)ため、`provisionOrganization()`が気づかず2つ目の空事業所を作成してしまう問題があった。事業所スイッチャーの導入で複数事業所所属自体は正式な機能になったため、`provisionOrganization()`側で一律拒否はせず、`app/(auth)/signup/page.tsx`の`SignupGate`(`components/auth/SignupGate.tsx`)で「すでにログイン中です」という確認画面を挟み、明示的なタップ(「別の事業所を新しく追加する」)がない限りフォームに進めない形で、うっかり再訪問と意図的な追加を区別している。
 
 ## データモデル(D1/SQLite版)
 
@@ -192,17 +193,22 @@ Phase 0〜1aはSupabase版としてPR #1で実装済み(CI green)。以下のマ
 
 **D1データベースの作成について**: このセッションにはCloudflare Developer Platform向けのMCPツールが利用可能で、D1データベースの作成・一覧取得等をエージェントから直接実行できる(Supabaseではプロジェクト作成をユーザーに依頼する必要があったのと対照的)。「1アプリ=1 D1」の命名規則に従い、`shift-db`(本番)・`shift-db-preview`(開発/プレビュー用)としてユーザーの既存Cloudflareアカウント上に新規作成する(ユーザーの既存の `sync-db` / `sync-db-preview` とは別アプリのため独立させる)。
 
-## フェーズロードマップ
+## フェーズロードマップ(2026-09-13 更新)
 
 - **Phase 0 基盤**: ✅ 完了(Supabase版として実装、PR #1オープン、CI green)。
 - **Phase 1a コアMVP(手動割当)**: ✅ 完了(Supabase版として実装、PR #1に統合済み)。今日ビュー・スタッフCRUD・シフト種別設定・印刷ビュー・PWA基本。
-- **Phase 1a.5 インフラ移行(Cloudflare D1 + Better Auth)**: 🔜 次のステップ。上記「既存実装の移行計画」に従い、Supabase依存をCloudflare D1 + Drizzle + Better Authへ全面差し替え。D1データベース作成、スキーマ移行、認証差し替え、テナント分離テストの新規実装、Cloudflare Workersへのデプロイ確認までを含む。
-- **Phase 1.5 パイロット**: Phase 1a.5完了後、知り合いの1〜2事業所に無料で使ってもらい、今日ビューの操作感・印刷物を実運用で検証する。「お金を払ってでも使いたい」という反応が出てから次に進む。
-- **Phase 1b コアMVP(自動化)**: 週グリッド、休み希望、自動生成(下書き→確定)、未充足シフト警告、勤務ルール警告(連勤・週/月上限時間)。
-- **Phase 2 課金・オンボーディング**: Stripe Checkout/Webhook(冪等化)/Customer Portal、トライアル期限管理・催促メール(Cloudflare Cron Triggers)、ランディング/料金ページ、特定商取引法表記・利用規約・プライバシーポリシー、インボイス登録番号設定。
-- **Phase 3 磨き込み**: 交代申請ワークフロー、給与概算(深夜・時間外・法定休日の割増対応)・グラフ、Web Push通知(配信サーバー含む)、スタッフ本人ログイン(必要ならLINEログインも検討)、事業所スイッチャー、変更履歴。
-- **Phase 4 実顧客ベータ**: Phase 1.5のパイロット事業所を有料化する形で本格運用、フィードバック収集の仕組み、実データで見つかった穴を修正、`legacy/*.html`の整理。
-- **Phase 5 ネイティブ検討**: Capacitorでのラップ vs React Native再構築を、ベータの手応え次第で検討。
+- **Phase 1a.5 インフラ移行(Cloudflare D1 + Better Auth)**: ✅ 完了。Supabase依存をCloudflare D1 + Drizzle + Better Authへ全面差し替え済み。D1データベース(本番`shift-db`・プレビュー`shift-db-preview`)作成、スキーマ移行、認証差し替え、クロステナント分離テスト(`lib/db/scopedClient.isolation.d1.test.ts`)、Cloudflare Workersへのデプロイ確認まで完了。
+- **Phase 1.5 パイロット**: 🔜 未着手。Phase 1a.5完了後、知り合いの1〜2事業所に無料で使ってもらい、今日ビューの操作感・印刷物を実運用で検証する段階。「お金を払ってでも使いたい」という反応が出てから次に進む。
+- **Phase 1b コアMVP(自動化)**: ✅ 完了。週グリッド、休み希望の管理者代理入力、自動生成(下書き→確定、週・月単位)、未充足シフト警告、勤務ルール警告(連勤・週/月上限時間)、給与概算の基本表示。
+- **Phase 2 課金・オンボーディング**: 🔜 未着手。Stripe Checkout/Webhook(冪等化)/Customer Portal、トライアル期限管理・催促メール(Cloudflare Cron Triggers)、ランディング/料金ページ、特定商取引法表記・利用規約・プライバシーポリシー、インボイス登録番号設定。※金銭・契約が発生する作業のため、ユーザー指示により本セッションの実装対象外。
+- **Phase 3 磨き込み**: 部分完了。
+  - ✅ 交代申請ワークフロー(スタッフ申請→管理者代理入力→承認/却下)
+  - ✅ 給与概算の深夜・時間外・法定休日割増対応
+  - ✅ 変更履歴(監査ログ)の記録・閲覧画面
+  - ✅ 事業所スイッチャー(複数事業所所属時の切替、`memberships`ベース)。あわせて、既存ユーザーが`/signup`に再訪問した際に誤って2つ目の空事業所を作ってしまう問題のガード(`SignupGate`)も対応済み。
+  - 🔜 未着手: Web Push通知(配信サーバー含む)、スタッフ本人ログイン(必要ならLINEログインも検討)
+- **Phase 4 実顧客ベータ**: 🔜 未着手。Phase 1.5のパイロット事業所を有料化する形で本格運用、フィードバック収集の仕組み、実データで見つかった穴を修正、`legacy/*.html`の整理。
+- **Phase 5 ネイティブ検討**: 🔜 未着手。Capacitorでのラップ vs React Native再構築を、ベータの手応え次第で検討。
 
 ## 検証方法
 

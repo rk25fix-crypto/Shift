@@ -49,13 +49,20 @@ export async function verifyOtp(email: string, otp: string): Promise<{ error: st
 }
 
 /**
- * Called once, right after a brand-new user's first successful OTP
- * verification during signup. Creates the organization + owner membership +
- * a 14-day trial subscription together so the three rows can never end up
- * out of sync with each other.
+ * Called once, right after a successful OTP verification on the signup
+ * form. Creates the organization + owner membership + a 14-day trial
+ * subscription together so the three rows can never end up out of sync with
+ * each other.
  *
  * Uses the raw D1 client (allow-listed in eslint.config.mjs) because this is
  * the one legitimate bootstrap case with no organizationId to scope by yet.
+ *
+ * Intentionally has no "already has a membership" guard: a user can belong
+ * to more than one organization (see the org switcher,
+ * components/settings/OrgSwitcher.tsx), and this is the only path that
+ * creates one. What must not happen is an *accidental* second call — that's
+ * handled up in app/(auth)/signup/page.tsx (SignupGate), which keeps an
+ * already-logged-in visitor from reaching this form without an explicit tap.
  */
 export async function provisionOrganization(
   businessName: string,
@@ -64,6 +71,7 @@ export async function provisionOrganization(
   if (!session) return { error: "ログインが必要です" };
 
   const db = getRawDb();
+
   const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
   try {
