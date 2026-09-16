@@ -88,13 +88,14 @@ export function MonthActions({ month, monthStart, monthEndExclusive }: MonthActi
 
   return (
     <div className="flex flex-col gap-2 px-4">
-      <p className="text-sm font-medium text-gray-600">{monthLabel}をまとめて操作</p>
+      <p className="text-sm font-bold text-ink-weak">{monthLabel}をまとめて操作</p>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           disabled={isPending}
           onClick={handleGenerate}
-          className="rounded-full border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 disabled:opacity-50"
+          className="rounded-full border-2 px-4 py-2 text-sm font-bold disabled:opacity-50"
+          style={{ borderColor: "var(--color-primary)", color: "var(--color-primary-ink)" }}
         >
           この月を自動生成
         </button>
@@ -102,7 +103,7 @@ export function MonthActions({ month, monthStart, monthEndExclusive }: MonthActi
           type="button"
           disabled={isPending}
           onClick={handleConfirm}
-          className="rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-600 disabled:opacity-50"
+          className="rounded-full border border-border px-4 py-2 text-sm text-ink-weak disabled:opacity-50"
         >
           この月の下書きを確定
         </button>
@@ -110,12 +111,12 @@ export function MonthActions({ month, monthStart, monthEndExclusive }: MonthActi
           type="button"
           disabled={isPending}
           onClick={handleDiscard}
-          className="rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-600 disabled:opacity-50"
+          className="rounded-full border border-border px-4 py-2 text-sm text-ink-weak disabled:opacity-50"
         >
           この月の下書きを破棄
         </button>
       </div>
-      {message && <p className="text-sm text-gray-600">{message}</p>}
+      {message && <p className="text-sm text-ink-weak">{message}</p>}
     </div>
   );
 }

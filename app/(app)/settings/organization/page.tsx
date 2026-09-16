@@ -15,19 +15,24 @@ export default async function OrganizationSettingsPage() {
       )}
       <ul className="flex flex-col gap-2 text-sm">
         <li>
-          <Link href="/settings/shift-types" className="text-indigo-600">
+          <Link href="/swaps" className="text-primary-ink">
+            交代の申請・一覧
+          </Link>
+        </li>
+        <li>
+          <Link href="/settings/shift-types" className="text-primary-ink">
             シフト種別の設定
           </Link>
         </li>
         {isManager(role) && (
           <li>
-            <Link href="/settings/audit-log" className="text-indigo-600">
+            <Link href="/settings/audit-log" className="text-primary-ink">
               変更履歴
             </Link>
           </li>
         )}
         <li>
-          <Link href="/billing" className="text-indigo-600">
+          <Link href="/billing" className="text-primary-ink">
             お支払い・プラン
           </Link>
         </li>

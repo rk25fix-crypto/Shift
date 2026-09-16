@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { requireCurrentMembership } from "@/lib/org/current";
+import { listMembershipsForCurrentUser, requireCurrentMembership } from "@/lib/org/current";
 import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
-import { getAssignmentsForDate } from "@/lib/shifts/queries";
+import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
-import { addDays, formatDateJapanese, isValidIsoDate, todayInTimezone } from "@/lib/date";
+import { computeUnfilledDates } from "@/lib/shifts/unfilled-dates";
+import { addDays, datesInWeek, formatDateJapanese, isValidIsoDate, mondayOf, todayInTimezone } from "@/lib/date";
 import { DayList } from "@/components/shift/DayList";
+import { DateStrip } from "@/components/shift/DateStrip";
 import { DateJumpForm } from "@/components/shift/DateJumpForm";
 
 export default async function TodayPage({
@@ -15,36 +17,51 @@ export default async function TodayPage({
 }) {
   const { date: dateParam } = await searchParams;
   const date = dateParam && isValidIsoDate(dateParam) ? dateParam : todayInTimezone();
+  const monday = mondayOf(date);
+  const weekDates = datesInWeek(monday);
+  const weekEndExclusive = addDays(monday, 7);
 
   const { organizationId } = await requireCurrentMembership();
-  const [staff, shiftTypes, assignments, timeOff] = await Promise.all([
+  const [staff, shiftTypes, memberships, weekAssignments, weekTimeOff] = await Promise.all([
     listStaff(organizationId),
     listShiftTypes(organizationId),
-    getAssignmentsForDate(organizationId, date),
-    listTimeOffForRange(organizationId, date, addDays(date, 1)),
+    listMembershipsForCurrentUser(),
+    getAssignmentsForOrgRange(organizationId, monday, weekEndExclusive, { includeDrafts: true }),
+    listTimeOffForRange(organizationId, monday, weekEndExclusive),
   ]);
+
+  const organizationName = memberships.find((m) => m.organizationId === organizationId)?.organizationName ?? "";
+  const requiredShiftTypes = shiftTypes.filter((t) => t.isRequired);
+  const unfilledDates = computeUnfilledDates(weekDates, requiredShiftTypes, weekAssignments);
+  const filledDates = new Set(weekDates.filter((d) => !unfilledDates.has(d)));
+
+  const assignments = weekAssignments.filter((a) => a.date === date && a.status === "confirmed");
+  const timeOff = weekTimeOff.filter((t) => t.date === date);
 
   return (
     <div className="flex flex-1 flex-col gap-4 py-6">
       <div className="flex items-center justify-between px-4">
+        <div>
+          <p className="text-[11px] font-bold text-ink-weakest">{organizationName}</p>
+          <h1 className="text-xl font-bold font-heading text-ink">{formatDateJapanese(date)}</h1>
+        </div>
         <Link
-          href={`/today?date=${addDays(date, -1)}`}
-          aria-label="前の日"
-          className="p-2 text-xl text-gray-500"
+          href={`/week?start=${monday}`}
+          className="rounded-full border border-primary-soft-border bg-primary-soft px-3 py-1.5 text-xs font-bold text-primary-ink"
         >
-          ‹
-        </Link>
-        <h1 className="text-lg font-bold">{formatDateJapanese(date)}</h1>
-        <Link
-          href={`/today?date=${addDays(date, 1)}`}
-          aria-label="次の日"
-          className="p-2 text-xl text-gray-500"
-        >
-          ›
+          今週
         </Link>
       </div>
+      <DateStrip dates={weekDates} selectedDate={date} filledDates={filledDates} />
       <DateJumpForm date={date} />
       <DayList date={date} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
+      <Link
+        href={`/week?start=${monday}`}
+        className="fixed inset-x-0 mx-auto w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)]"
+        style={{ background: "var(--color-primary)", bottom: "calc(env(safe-area-inset-bottom) + 78px)" }}
+      >
+        この週を自動で組む
+      </Link>
     </div>
   );
 }

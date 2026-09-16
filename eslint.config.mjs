@@ -55,6 +55,11 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "dist/**",
     "worker-configuration.d.ts",
+    // Claude Code worktrees are scratch checkouts managed by the harness, not project source.
+    ".claude/worktrees/**",
+    // Vendored Claude Design prototype bundle — reference material, not app source.
+    "docs/**/*.dc.html",
+    "docs/**/support.js",
   ]),
 ]);
 
