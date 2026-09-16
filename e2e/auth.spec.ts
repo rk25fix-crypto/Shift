@@ -13,6 +13,6 @@ test.describe("auth", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     // The bottom nav's own tab confirms this is the real authenticated app
     // shell, not just a URL match.
-    await expect(page.getByRole("link", { name: "今日" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "ホーム" })).toBeVisible();
   });
 });

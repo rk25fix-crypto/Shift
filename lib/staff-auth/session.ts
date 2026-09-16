@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { getRawDb } from "@/lib/db/raw";
-import { staffSessions } from "@/drizzle/schema";
+import { staff, staffSessions } from "@/drizzle/schema";
 
 /**
  * Cookie for the staff self-service session (design_handoff_shift_bright_flow
@@ -35,6 +35,10 @@ export async function setStaffSessionCookie(token: string): Promise<void> {
  * null rather than being deleted here — session rows are cheap and a lazy
  * sweep (lib/admin) can clean them up later; this path only ever needs to
  * decide "is this still good," not "shall I be a garbage collector."
+ *
+ * Also checks staff.isActive — a deactivated staff member
+ * (lib/staff/write.ts's deactivateStaffCore) must lose access immediately,
+ * not whenever their session happens to expire up to 30 days later.
  */
 export async function getCurrentStaffSession(): Promise<CurrentStaffSession | null> {
   const token = (await cookies()).get(STAFF_SESSION_COOKIE)?.value;
@@ -46,18 +50,13 @@ export async function getCurrentStaffSession(): Promise<CurrentStaffSession | nu
       organizationId: staffSessions.organizationId,
       staffId: staffSessions.staffId,
       expiresAt: staffSessions.expiresAt,
+      staffIsActive: staff.isActive,
     })
     .from(staffSessions)
+    .innerJoin(staff, eq(staff.id, staffSessions.staffId))
     .where(eq(staffSessions.token, token));
 
-  if (!row || row.expiresAt.getTime() < Date.now()) return null;
+  if (!row || row.expiresAt.getTime() < Date.now() || !row.staffIsActive) return null;
 
   return { organizationId: row.organizationId, staffId: row.staffId };
-}
-
-/** Same as getCurrentStaffSession(), but throws for pages/actions that require a claimed invite to render at all. */
-export async function requireCurrentStaffSession(): Promise<CurrentStaffSession> {
-  const session = await getCurrentStaffSession();
-  if (!session) throw new Error("この操作には招待リンクからのログインが必要です。");
-  return session;
 }

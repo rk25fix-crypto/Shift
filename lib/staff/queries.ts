@@ -70,7 +70,7 @@ export async function getStaffHourlyWage(
  * MembershipRole applies there (a staff self-service session isn't a
  * membership at all), so the owner-only gate above doesn't fit. Safe only
  * because every caller resolves staffId from
- * lib/staff-auth/session.ts's requireCurrentStaffSession(), never from
+ * lib/staff-auth/session.ts's getCurrentStaffSession(), never from
  * client input — there is no way to pass a different staffId and see a
  * coworker's wage through this path.
  */

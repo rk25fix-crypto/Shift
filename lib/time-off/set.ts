@@ -67,3 +67,73 @@ export async function setTimeOffRequest(
 
   return { error: null };
 }
+
+/**
+ * Staff-submitted version, called from lib/staff-auth/actions.ts's
+ * requestOwnTimeOff — deliberately NOT the same write as setTimeOffRequest
+ * above. That one is written for a manager proxy-entering a day off and
+ * silently clears whatever shift_assignments row is there, which is correct
+ * when a manager is the one making the call. A staff member tapping a day
+ * on their own calendar must never make an already-*confirmed* shift
+ * disappear without a manager seeing it — this refuses instead. A *draft*
+ * (unconfirmed, not yet published) assignment is still cleared, since the
+ * manager hasn't committed to it yet. Status is "requested" (the schema's
+ * own default for an unacknowledged request), not "acknowledged" — nobody
+ * has reviewed this one yet.
+ */
+export async function requestOwnTimeOff(
+  organizationId: string,
+  staffId: string,
+  date: string,
+): Promise<{ error: string | null }> {
+  if (!isValidIsoDate(date)) return { error: "日付が不正です" };
+
+  const { db } = getScopedDb(organizationId);
+
+  const [staffRow] = await db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.organizationId, organizationId), eq(staff.id, staffId)));
+  if (!staffRow) return { error: "スタッフが見つかりません" };
+
+  const [confirmedAssignment] = await db
+    .select({ id: shiftAssignments.id })
+    .from(shiftAssignments)
+    .where(
+      and(
+        eq(shiftAssignments.organizationId, organizationId),
+        eq(shiftAssignments.staffId, staffId),
+        eq(shiftAssignments.date, date),
+        eq(shiftAssignments.status, "confirmed"),
+      ),
+    );
+  if (confirmedAssignment) {
+    return { error: "この日はすでに確定したシフトがあります。交代の申請、または管理者にご相談ください。" };
+  }
+
+  try {
+    await db.batch([
+      db
+        .delete(shiftAssignments)
+        .where(
+          and(
+            eq(shiftAssignments.organizationId, organizationId),
+            eq(shiftAssignments.staffId, staffId),
+            eq(shiftAssignments.date, date),
+            eq(shiftAssignments.status, "draft"),
+          ),
+        ),
+      db
+        .insert(timeOffRequests)
+        .values({ organizationId, staffId, date, status: "requested" })
+        .onConflictDoUpdate({
+          target: [timeOffRequests.staffId, timeOffRequests.date],
+          set: { status: "requested" },
+        }),
+    ]);
+  } catch (err) {
+    return { error: toUserFacingError(err, "保存に失敗しました") };
+  }
+
+  return { error: null };
+}

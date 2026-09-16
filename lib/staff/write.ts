@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
 import { recordAuditLog } from "@/lib/audit/write";
-import { staff, staffCompensation } from "@/drizzle/schema";
+import { staff, staffCompensation, staffSessions } from "@/drizzle/schema";
 import type { MembershipRole } from "@/lib/org/current";
 
 export interface StaffInput {
@@ -146,10 +146,21 @@ export async function deactivateStaffCore(
   actorUserId: string | null = null,
 ): Promise<{ error: string | null }> {
   const { db } = getScopedDb(organizationId);
-  await db
-    .update(staff)
-    .set({ isActive: false })
-    .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+  await db.batch([
+    db
+      .update(staff)
+      .set({ isActive: false })
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId))),
+    // lib/staff-auth/session.ts's getCurrentStaffSession() already checks
+    // staff.isActive on every read, so this isn't the only thing standing
+    // between a deactivated staff member and /staff-home — but deleting the
+    // row outright (matching lib/staff-invites/write.ts's createInviteCore
+    // re-issue behavior) means a deactivated staff member has no live
+    // session left to look up at all, not just one that resolves to denied.
+    db
+      .delete(staffSessions)
+      .where(and(eq(staffSessions.staffId, staffId), eq(staffSessions.organizationId, organizationId))),
+  ]);
 
   await recordAuditLog(organizationId, actorUserId, "update", "staff", staffId, {
     isActive: false,

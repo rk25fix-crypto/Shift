@@ -32,6 +32,10 @@ export default async function TodayPage({
 
   const organizationName = memberships.find((m) => m.organizationId === organizationId)?.organizationName ?? "";
   const requiredShiftTypes = shiftTypes.filter((t) => t.isRequired);
+  // includeDrafts: true (same choice /week makes) — the DateStrip dot means
+  // "someone is slotted for every required shift," draft or confirmed, so a
+  // manager sees a day needs attention before generating/confirming, not
+  // only after. The DayList below still only shows confirmed assignments.
   const unfilledDates = computeUnfilledDates(weekDates, requiredShiftTypes, weekAssignments);
   const filledDates = new Set(weekDates.filter((d) => !unfilledDates.has(d)));
 
@@ -57,10 +61,10 @@ export default async function TodayPage({
       <DayList date={date} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
       <Link
         href={`/week?start=${monday}`}
-        className="fixed inset-x-0 mx-auto w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)]"
+        className="fixed inset-x-0 z-10 mx-auto w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)]"
         style={{ background: "var(--color-primary)", bottom: "calc(env(safe-area-inset-bottom) + 78px)" }}
       >
-        この週を自動で組む
+        週表示で自動で組む
       </Link>
     </div>
   );

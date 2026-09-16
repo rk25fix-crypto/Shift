@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireCurrentStaffSession } from "@/lib/staff-auth/session";
+import { getCurrentStaffSession } from "@/lib/staff-auth/session";
 import { getStaff, getOwnHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
@@ -12,7 +12,17 @@ import { AvailabilityEditor } from "@/components/staff/AvailabilityEditor";
 
 /** スタッフ本人の1画面完結ホーム(design handoff 1c)。管理者向け画面とは別ルート、招待リンクからのみ到達する。 */
 export default async function StaffHomePage() {
-  const { organizationId, staffId } = await requireCurrentStaffSession();
+  const session = await getCurrentStaffSession();
+  if (!session) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+        <p className="text-sm text-ink-weak">
+          セッションが見つかりません。招待リンクをもう一度開くか、管理者にリンクの再発行を依頼してください。
+        </p>
+      </main>
+    );
+  }
+  const { organizationId, staffId } = session;
   const today = todayInTimezone();
   const nextMonthStart = `${nextMonth(monthOf(today))}-01`;
 

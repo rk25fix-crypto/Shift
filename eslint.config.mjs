@@ -30,7 +30,7 @@ const eslintConfig = defineConfig([
     files: [
       "lib/db/scopedClient.ts",
       "lib/auth/config.ts",
-      "lib/auth/actions.ts",
+      "lib/auth/provision.ts",
       "lib/org/current.ts",
       "lib/org/actions.ts",
       "lib/db/scopedClient.isolation.d1.test.ts",

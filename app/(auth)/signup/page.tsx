@@ -6,9 +6,9 @@ import { SignupGate } from "@/components/auth/SignupGate";
  * A logged-in visitor who lands here (an old bookmark, a stray link) sees a
  * confirmation gate instead of the form — Better Auth's email-otp
  * re-authenticates an existing user rather than erroring on verifyOtp, so
- * without this an accidental revisit could silently walk through the form
- * again and leave provisionOrganization() (lib/auth/actions.ts) creating a
- * second, empty organization for them. A user who *does* want to add another
+ * without this an accidental revisit could silently walk through the wizard
+ * again and leave completeOnboarding() (lib/onboarding/actions.ts) creating
+ * a second, empty organization for them. A user who *does* want to add another
  * business (the org switcher exists to support exactly that) can still get
  * to the form via SignupGate's explicit "別の事業所を新しく追加する" tap.
  */

@@ -99,16 +99,17 @@ export function WeekGrid({
                 const assignment = assignmentByStaffDate.get(key);
                 const shiftType = assignment ? shiftTypeById.get(assignment.shiftTypeId) : undefined;
                 const isTimeOff = !shiftType && timeOffByStaffDate.has(key);
+                const color = shiftType ? shiftTypeColor(shiftTypeIndexById.get(shiftType.id) ?? 0) : undefined;
                 return (
                   <div key={date} className="flex justify-center">
                     <button
                       type="button"
                       onClick={() => setOpenCell({ staffId: member.id, date })}
                       style={
-                        shiftType
+                        color
                           ? {
-                              background: shiftTypeColor(shiftTypeIndexById.get(shiftType.id) ?? 0).bg,
-                              color: shiftTypeColor(shiftTypeIndexById.get(shiftType.id) ?? 0).text,
+                              background: color.bg,
+                              color: color.text,
                               borderColor:
                                 assignment?.status === "draft"
                                   ? "var(--color-primary-hover-border)"
@@ -120,7 +121,6 @@ export function WeekGrid({
                             : undefined
                       }
                       className="flex h-9 w-9 items-center justify-center rounded-[9px] border text-xs font-bold"
-                      aria-label={`${member.name}の${formatDateJapanese(date)}`}
                     >
                       {shiftType ? shiftType.code : isTimeOff ? "休" : "―"}
                     </button>

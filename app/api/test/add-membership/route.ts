@@ -8,8 +8,8 @@ import { addMembershipForUser } from "@/lib/admin/test-add-membership";
  * (components/settings/OrgSwitcher.tsx) can be reached deterministically in
  * a test without a second real signup — that route also works (Better
  * Auth's email-otp re-authenticates an existing user rather than erroring,
- * and lib/auth/actions.ts's provisionOrganization has no guard against
- * being called by an already-logged-in user), but exercises unrelated
+ * and lib/auth/provision.ts's provisionOrganizationCore has no guard against
+ * being called for an already-logged-in user), but exercises unrelated
  * session-cookie re-authentication machinery a plain "give this test user a
  * second org" fixture has no reason to depend on.
  *

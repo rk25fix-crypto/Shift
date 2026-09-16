@@ -39,6 +39,13 @@ export function formatDateJapanese(date: string): string {
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${JP_WEEKDAYS[d.getUTCDay()]})`;
 }
 
+/** Day-of-month and Japanese weekday label for a date strip/calendar cell (components/shift/DateStrip.tsx, components/staff/TimeOffCalendar.tsx). */
+export function dayAndWeekday(date: string): { day: number; weekday: number; weekdayLabel: string } {
+  const d = new Date(`${date}T00:00:00Z`);
+  const weekday = d.getUTCDay();
+  return { day: d.getUTCDate(), weekday, weekdayLabel: JP_WEEKDAYS[weekday] };
+}
+
 /** YYYY-MM for the given date, defaulting to today. */
 export function monthOf(date: string): string {
   return date.slice(0, 7);

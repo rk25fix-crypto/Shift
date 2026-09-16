@@ -160,6 +160,7 @@ export function OnboardingWizard() {
             type="email"
             required
             autoComplete="email"
+            aria-label="メールアドレス"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="rounded-lg border border-border px-4 py-3 text-base"
@@ -187,6 +188,7 @@ export function OnboardingWizard() {
             pattern="[0-9]*"
             maxLength={6}
             required
+            aria-label="認証コード"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             className="rounded-lg border-2 px-4 py-3 text-center text-2xl tracking-widest"
@@ -328,7 +330,7 @@ export function OnboardingWizard() {
             className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
             style={{ background: "var(--color-primary)" }}
           >
-            {isPending ? "組み立てています…" : `${staffNames.length || 0}人でシフトを作る`}
+            {isPending ? "組み立てています…" : `${staffNames.length}人でシフトを作る`}
           </button>
         </div>
       )}

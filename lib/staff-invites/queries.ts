@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getRawDb } from "@/lib/db/raw";
 import { staff, staffInvites } from "@/drizzle/schema";
 
@@ -29,7 +29,10 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
   if (invite.claimedAt) return { status: "claimed" };
   if (invite.expiresAt.getTime() < Date.now()) return { status: "expired" };
 
-  const [staffRow] = await db.select({ name: staff.name }).from(staff).where(eq(staff.id, invite.staffId));
+  const [staffRow] = await db
+    .select({ name: staff.name })
+    .from(staff)
+    .where(and(eq(staff.id, invite.staffId), eq(staff.organizationId, invite.organizationId)));
   if (!staffRow) return { status: "not_found" };
 
   return { status: "valid", staffName: staffRow.name, organizationId: invite.organizationId };

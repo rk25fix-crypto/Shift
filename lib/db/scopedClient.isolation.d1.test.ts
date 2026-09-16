@@ -31,7 +31,12 @@ import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
 import { createSwapRequestCore, decideSwapRequestCore } from "@/lib/swaps/write";
 import { listRecentAuditLog } from "@/lib/audit/queries";
 import { listSwapRequests } from "@/lib/swaps/queries";
-import { shiftAssignments } from "@/drizzle/schema";
+import { shiftAssignments, staffInvites, staffSessions } from "@/drizzle/schema";
+import { createInviteCore, claimInviteCore } from "@/lib/staff-invites/write";
+import { getInvitePreview } from "@/lib/staff-invites/queries";
+import { getOwnHourlyWage } from "@/lib/staff/queries";
+import { updateStaffAvailabilityCore } from "@/lib/staff/write";
+import { requestOwnTimeOff } from "@/lib/time-off/set";
 
 /**
  * The real backstop for tenant isolation now that D1 has no Row-Level
@@ -1299,5 +1304,118 @@ describe("audit log isolation (listRecentAuditLog + write-path integration)", ()
       entityId: staffA.id,
       action: "update",
     });
+  });
+});
+
+describe("staff invites / staff sessions isolation (lib/staff-invites, lib/staff-auth)", () => {
+  it("createInviteCore refuses to issue an invite for another org's staffId", async () => {
+    const result = await createInviteCore(orgA.id, staffB.id);
+    expect(result.token).toBeNull();
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const rows = await getRawDb().select().from(staffInvites).where(eq(staffInvites.staffId, staffB.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("an invite is scoped to the org it was issued for, end to end through claim", async () => {
+    const issued = await createInviteCore(orgA.id, staffA.id);
+    expect(issued.error).toBeNull();
+    const token = issued.token!;
+
+    const preview = await getInvitePreview(token);
+    expect(preview).toMatchObject({ status: "valid", staffName: "スタッフA", organizationId: orgA.id });
+
+    const claimed = await claimInviteCore(token, { fixedDaysOff: [0], unavailableShiftTypeIds: [] });
+    if ("error" in claimed) throw new Error(`unexpected claim failure: ${claimed.error}`);
+    expect(claimed.organizationId).toBe(orgA.id);
+    expect(claimed.staffId).toBe(staffA.id);
+
+    // getOwnHourlyWage must never see across the org boundary even when
+    // given a staffId from a different org than the one it's called with —
+    // the same defense-in-depth this file checks for getStaffHourlyWage.
+    expect(await getOwnHourlyWage(orgA.id, staffB.id)).toBeNull();
+    expect(await getOwnHourlyWage(orgA.id, staffA.id)).toBe(1200);
+
+    const db = getRawDb();
+    await db.delete(staffSessions).where(eq(staffSessions.token, claimed.sessionToken));
+    await db.delete(staffInvites).where(eq(staffInvites.token, token));
+  });
+
+  it("a claimed invite token cannot be claimed a second time (no double session issuance)", async () => {
+    const issued = await createInviteCore(orgB.id, staffB.id);
+    expect(issued.error).toBeNull();
+    const token = issued.token!;
+
+    const first = await claimInviteCore(token, { fixedDaysOff: [], unavailableShiftTypeIds: [] });
+    if ("error" in first) throw new Error(`unexpected first-claim failure: ${first.error}`);
+
+    const second = await claimInviteCore(token, { fixedDaysOff: [], unavailableShiftTypeIds: [] });
+    expect("error" in second).toBe(true);
+    if (!("error" in second)) throw new Error("second claim unexpectedly succeeded");
+    expect(second.error).toBe("この招待リンクはすでに使用されています");
+
+    const db = getRawDb();
+    const sessions = await db.select().from(staffSessions).where(eq(staffSessions.staffId, staffB.id));
+    expect(sessions).toHaveLength(1); // only the first claim's session exists
+
+    await db.delete(staffSessions).where(eq(staffSessions.token, first.sessionToken));
+    await db.delete(staffInvites).where(eq(staffInvites.token, token));
+  });
+
+  it("re-issuing an invite revokes the staff member's existing sessions", async () => {
+    const issued = await createInviteCore(orgA.id, staffA.id);
+    const claimed = await claimInviteCore(issued.token!, {
+      fixedDaysOff: [],
+      unavailableShiftTypeIds: [],
+    });
+    if ("error" in claimed) throw new Error(`unexpected claim failure: ${claimed.error}`);
+
+    const db = getRawDb();
+    const beforeReissue = await db
+      .select()
+      .from(staffSessions)
+      .where(eq(staffSessions.token, claimed.sessionToken));
+    expect(beforeReissue).toHaveLength(1);
+
+    await createInviteCore(orgA.id, staffA.id); // re-issue
+
+    const afterReissue = await db
+      .select()
+      .from(staffSessions)
+      .where(eq(staffSessions.token, claimed.sessionToken));
+    expect(afterReissue).toHaveLength(0);
+
+    await db.delete(staffInvites).where(eq(staffInvites.staffId, staffA.id));
+  });
+
+  it("updateStaffAvailabilityCore never mutates another org's staff row when passed a mismatched staffId", async () => {
+    const before = await getStaff(orgB.id, staffB.id);
+    const result = await updateStaffAvailabilityCore(orgA.id, staffB.id, {
+      fixedDaysOff: [1, 2, 3],
+      unavailableShiftTypeIds: [],
+    });
+    expect(result.error).toBeNull(); // no-op, not an error — matches deactivateStaffCore's existing behavior
+
+    const after = await getStaff(orgB.id, staffB.id);
+    expect(after).toEqual(before);
+  });
+
+  it("requestOwnTimeOff (staff self-service) refuses to clear a confirmed shift, unlike the manager proxy path", async () => {
+    // staffA/shiftTypeA/2026-06-01 was confirmed by the beforeAll seed above.
+    const result = await requestOwnTimeOff(orgA.id, staffA.id, "2026-06-01");
+    expect(result.error).toBe(
+      "この日はすでに確定したシフトがあります。交代の申請、または管理者にご相談ください。",
+    );
+
+    const stillAssigned = await getAssignmentsForDate(orgA.id, "2026-06-01");
+    expect(stillAssigned.some((a) => a.staffId === staffA.id)).toBe(true);
+  });
+
+  it("requestOwnTimeOff never writes into another org when passed a mismatched staffId", async () => {
+    const result = await requestOwnTimeOff(orgA.id, staffB.id, "2026-06-25");
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const orgBTimeOff = await listTimeOffForRange(orgB.id, "2026-06-25", "2026-06-26");
+    expect(orgBTimeOff).toHaveLength(0);
   });
 });

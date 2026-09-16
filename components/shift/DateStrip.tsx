@@ -1,6 +1,5 @@
 import Link from "next/link";
-
-const JP_WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+import { dayAndWeekday } from "@/lib/date";
 
 interface DateStripProps {
   dates: string[];
@@ -14,8 +13,7 @@ export function DateStrip({ dates, selectedDate, filledDates }: DateStripProps) 
   return (
     <div className="grid grid-cols-7 gap-1.5 px-4">
       {dates.map((date) => {
-        const d = new Date(`${date}T00:00:00Z`);
-        const weekday = d.getUTCDay();
+        const { day, weekday, weekdayLabel } = dayAndWeekday(date);
         const isSelected = date === selectedDate;
         const isWeekend = weekday === 0 || weekday === 6;
         return (
@@ -30,9 +28,9 @@ export function DateStrip({ dates, selectedDate, filledDates }: DateStripProps) 
             }
           >
             <span className="text-[10px]" style={!isSelected ? { color: "var(--color-ink-weakest)" } : undefined}>
-              {JP_WEEKDAYS[weekday]}
+              {weekdayLabel}
             </span>
-            <span className="text-base font-bold font-heading">{d.getUTCDate()}</span>
+            <span className="text-base font-bold font-heading">{day}</span>
             <span
               aria-hidden
               className="h-[5px] w-[5px] rounded-full"
