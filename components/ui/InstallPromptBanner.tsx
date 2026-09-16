@@ -65,9 +65,9 @@ export function InstallPromptBanner() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t border-gray-200 bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-lg">
-      <p className="text-sm font-medium">ホーム画面に追加すると、アプリのように使えます</p>
-      <ol className="list-inside list-decimal text-sm text-gray-600">
+    <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t border-border bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-6px_18px_rgba(43,39,34,.08)]">
+      <p className="text-sm font-bold text-ink">ホーム画面に追加すると、アプリのように使えます</p>
+      <ol className="list-inside list-decimal text-sm text-ink-weak">
         <li>画面下の共有ボタン(□に↑)をタップ</li>
         <li>「ホーム画面に追加」を選択</li>
         <li>右上の「追加」をタップ</li>
@@ -75,7 +75,7 @@ export function InstallPromptBanner() {
       <button
         type="button"
         onClick={dismiss}
-        className="self-end text-sm text-indigo-600"
+        className="self-end text-sm font-bold text-primary-ink"
       >
         閉じる
       </button>

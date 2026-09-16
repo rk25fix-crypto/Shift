@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Zen_Maru_Gothic, Noto_Sans_JP } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
+import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import "./globals.css";
 
 const zenMaruGothic = Zen_Maru_Gothic({
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         <RegisterServiceWorker />
+        <OfflineBanner />
         {children}
       </body>
     </html>

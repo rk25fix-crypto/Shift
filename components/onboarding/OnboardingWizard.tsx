@@ -52,14 +52,18 @@ export function OnboardingWizard() {
     setStep("email");
   }
 
-  function handleRequestCode(e: React.FormEvent) {
-    e.preventDefault();
+  function requestCode() {
     setError(null);
     startTransition(async () => {
       const { error } = await requestOtp(email);
       if (error) setError(error);
       else setStep("code");
     });
+  }
+
+  function handleRequestCode(e: React.FormEvent) {
+    e.preventDefault();
+    requestCode();
   }
 
   function handleVerifyCode(e: React.FormEvent) {
@@ -185,10 +189,15 @@ export function OnboardingWizard() {
             required
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="rounded-lg border border-border px-4 py-3 text-center text-2xl tracking-widest"
+            className="rounded-lg border-2 px-4 py-3 text-center text-2xl tracking-widest"
+            style={{ borderColor: error ? "var(--color-danger-ink-strong)" : "var(--color-border)" }}
             placeholder="000000"
           />
-          {error && <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>{error}</p>}
+          {error && (
+            <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+              {error}(古いメールに届いたコードを見ている可能性があります)
+            </p>
+          )}
           <button
             type="submit"
             disabled={isPending}
@@ -197,6 +206,16 @@ export function OnboardingWizard() {
           >
             {isPending ? "確認中..." : "次へ"}
           </button>
+          {error && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={requestCode}
+              className="text-sm font-bold text-primary-ink"
+            >
+              新しいコードを送りなおす
+            </button>
+          )}
         </form>
       )}
 
