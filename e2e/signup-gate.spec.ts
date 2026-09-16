@@ -50,6 +50,7 @@ test.describe("signup revisit guard", () => {
     await page.getByRole("button", { name: "別の事業所を新しく追加する" }).click();
 
     await page.getByLabel("事業所名").fill("テスト第二希望保育園");
+    await page.getByRole("button", { name: /その他/ }).click();
     // Re-using the same email is deliberate: Better Auth's email-otp
     // re-authenticates an existing user on verifyOtp rather than erroring,
     // which is exactly the machinery provisionOrganization() relies on to

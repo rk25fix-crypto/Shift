@@ -36,6 +36,12 @@ const eslintConfig = defineConfig([
       "lib/db/scopedClient.isolation.d1.test.ts",
       "app/api/stripe/webhook/route.ts",
       "lib/admin/**/*.ts",
+      // Staff invite-claim and staff-session lookup have no organizationId to
+      // scope by until the token/cookie itself resolves one — same bootstrap
+      // case as lib/org/current.ts's getCurrentMembership().
+      "lib/staff-invites/write.ts",
+      "lib/staff-invites/queries.ts",
+      "lib/staff-auth/session.ts",
     ],
     rules: {
       "no-restricted-imports": "off",

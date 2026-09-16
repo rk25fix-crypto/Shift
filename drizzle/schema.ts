@@ -273,3 +273,50 @@ export const auditLog = sqliteTable(
     ),
   ],
 );
+
+// Staff self-service login (docs/plan.md Phase 3) is a link-only session, not
+// a Better Auth account — no password/OTP (design_handoff_shift_bright_flow/
+// README.md 2i「招待リンク先」). staffInvites is the one-time link an admin
+// hands a staff member; claiming it (lib/staff-invites/actions.ts) issues a
+// longer-lived staffSessions row instead of reusing the invite token itself,
+// so a leaked/bookmarked invite link can't be replayed after it's claimed.
+export const staffInvites = sqliteTable(
+  "staff_invites",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    claimedAt: integer("claimed_at", { mode: "timestamp" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_invites_token_unique").on(table.token),
+    index("staff_invites_staff_idx").on(table.staffId),
+  ],
+);
+
+export const staffSessions = sqliteTable(
+  "staff_sessions",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_sessions_token_unique").on(table.token),
+    index("staff_sessions_staff_idx").on(table.staffId),
+  ],
+);

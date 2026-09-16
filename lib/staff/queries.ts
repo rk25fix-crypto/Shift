@@ -65,6 +65,34 @@ export async function getStaffHourlyWage(
   return row?.hourlyWage ?? null;
 }
 
+/**
+ * Self-view variant of getStaffHourlyWage() for app/staff-home/page.tsx — no
+ * MembershipRole applies there (a staff self-service session isn't a
+ * membership at all), so the owner-only gate above doesn't fit. Safe only
+ * because every caller resolves staffId from
+ * lib/staff-auth/session.ts's requireCurrentStaffSession(), never from
+ * client input — there is no way to pass a different staffId and see a
+ * coworker's wage through this path.
+ */
+export async function getOwnHourlyWage(
+  organizationId: string,
+  staffId: string,
+): Promise<number | null> {
+  const { db } = getScopedDb(organizationId);
+  const [row] = await db
+    .select({ hourlyWage: staffCompensation.hourlyWage })
+    .from(staffCompensation)
+    .where(
+      and(
+        eq(staffCompensation.organizationId, organizationId),
+        eq(staffCompensation.staffId, staffId),
+      ),
+    )
+    .limit(1);
+
+  return row?.hourlyWage ?? null;
+}
+
 type StaffRow = typeof staff.$inferSelect;
 
 function toStaffRecord(row: StaffRow): StaffRecord {

@@ -8,6 +8,7 @@ import { estimatePayroll } from "@/lib/payroll";
 import { toWorkedShifts } from "@/lib/shifts/worked-shift";
 import { monthOf, nextMonth, todayInTimezone } from "@/lib/date";
 import { StaffForm } from "@/components/staff/StaffForm";
+import { InviteButton } from "@/components/staff/InviteButton";
 import { StaffMonthShifts } from "@/components/staff/StaffMonthShifts";
 import { LaborWarningsList } from "@/components/shift/LaborWarningsList";
 import { PayrollEstimate } from "@/components/staff/PayrollEstimate";
@@ -68,6 +69,9 @@ export default async function StaffDetailPage({
       <div className="mt-4 flex flex-col gap-3">
         <LaborWarningsList warnings={staffWarnings} />
         {payrollEstimate && <PayrollEstimate estimate={payrollEstimate} />}
+        <div className="mx-4">
+          <InviteButton staffId={staff.id} />
+        </div>
       </div>
 
       <section className="flex flex-col gap-2 py-6">

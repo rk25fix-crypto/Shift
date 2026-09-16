@@ -33,6 +33,11 @@ export async function signUpNewOrg(
 ): Promise<void> {
   await page.goto("/signup");
   await page.getByLabel("事業所名").fill(businessName);
+  // "その他" — the wizard's ステップ0「業種をえらぶ」 doesn't matter for
+  // tests that don't assert on the generated shift types, so any option
+  // works; this one keeps the preset list short (components/onboarding/
+  // OnboardingWizard.tsx, lib/shift-types/presets.ts).
+  await page.getByRole("button", { name: /その他/ }).click();
   await page.getByLabel("メールアドレス").fill(email);
   await page.getByRole("button", { name: /無料で始める/ }).click();
 

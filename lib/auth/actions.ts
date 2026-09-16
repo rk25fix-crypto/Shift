@@ -50,10 +50,12 @@ export async function verifyOtp(email: string, otp: string): Promise<{ error: st
 }
 
 /**
- * Called once, right after a successful OTP verification on the signup
- * form. Creates the organization + owner membership + a 14-day trial
- * subscription together so the three rows can never end up out of sync with
- * each other.
+ * Creates the organization + owner membership + a 14-day trial subscription
+ * together so the three rows can never end up out of sync with each other.
+ * Shared by provisionOrganization() below and completeOnboarding()
+ * (lib/onboarding/actions.ts) — the onboarding wizard needs the new
+ * organizationId back so it can immediately create shift types/staff/a draft
+ * for it in the same request, which a bare {error} return can't support.
  *
  * Uses the raw D1 client (allow-listed in eslint.config.mjs) because this is
  * the one legitimate bootstrap case with no organizationId to scope by yet.
@@ -71,23 +73,25 @@ export async function verifyOtp(email: string, otp: string): Promise<{ error: st
  * there's no cookie — making it look like nothing happened and inviting a
  * retry that creates yet another duplicate.
  */
-export async function provisionOrganization(
+export async function provisionOrganizationCore(
   businessName: string,
-): Promise<{ error: string | null }> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return { error: "ログインが必要です" };
-
+  userId: string,
+  businessType: string | null = null,
+): Promise<{ organizationId: string; error: null } | { organizationId: null; error: string }> {
   const db = getRawDb();
 
   const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
   try {
-    const [org] = await db.insert(organizations).values({ name: businessName }).returning();
+    const [org] = await db
+      .insert(organizations)
+      .values({ name: businessName, businessType })
+      .returning();
 
     await db.batch([
       db.insert(memberships).values({
         organizationId: org.id,
-        userId: session.user.id,
+        userId,
         role: "owner",
       }),
       db.insert(subscriptions).values({
@@ -100,8 +104,18 @@ export async function provisionOrganization(
 
     await setCurrentOrgCookie(org.id);
 
-    return { error: null };
+    return { organizationId: org.id, error: null };
   } catch (err) {
-    return { error: errorMessage(err) };
+    return { organizationId: null, error: errorMessage(err) };
   }
+}
+
+export async function provisionOrganization(
+  businessName: string,
+): Promise<{ error: string | null }> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return { error: "ログインが必要です" };
+
+  const result = await provisionOrganizationCore(businessName, session.user.id);
+  return { error: result.error };
 }

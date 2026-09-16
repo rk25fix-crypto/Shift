@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { SignupForm } from "@/components/auth/SignupForm";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 /**
  * Shown instead of the signup form when the visitor already has a
@@ -17,21 +17,22 @@ import { SignupForm } from "@/components/auth/SignupForm";
 export function SignupGate() {
   const [confirmed, setConfirmed] = useState(false);
 
-  if (confirmed) return <SignupForm />;
+  if (confirmed) return <OnboardingWizard />;
 
   return (
     <div className="flex w-full max-w-xs flex-col gap-4 text-center">
-      <p className="text-sm text-gray-600">すでにログイン中です。</p>
+      <p className="text-sm text-ink-weak">すでにログイン中です。</p>
       <Link
         href="/today"
-        className="rounded-full bg-indigo-600 px-6 py-3 text-base font-medium text-white"
+        className="rounded-full px-6 py-3 text-base font-bold font-heading text-white"
+        style={{ background: "var(--color-primary)" }}
       >
         アプリに戻る
       </Link>
       <button
         type="button"
         onClick={() => setConfirmed(true)}
-        className="text-sm text-gray-500 underline"
+        className="text-sm text-ink-weakest underline"
       >
         別の事業所を新しく追加する
       </button>

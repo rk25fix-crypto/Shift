@@ -21,10 +21,17 @@ test.describe("mobile smoke", () => {
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
   });
 
-  test("signup page collects business name before sending a code", async ({ page }) => {
+  test("signup page collects business name and industry before sending a code", async ({ page }) => {
     await page.goto("/signup");
 
     await expect(page.getByLabel("事業所名")).toBeVisible();
+    const otherOption = page.getByRole("button", { name: /その他/ });
+    await expect(otherOption).toBeDisabled();
+
+    await page.getByLabel("事業所名").fill("テストスモーク保育園");
+    await otherOption.click();
+
+    await expect(page.getByLabel("メールアドレス")).toBeVisible();
     await expect(page.getByRole("button", { name: /無料で始める/ })).toBeVisible();
   });
 });

@@ -1,5 +1,5 @@
 import { getCurrentMembership } from "@/lib/org/current";
-import { SignupForm } from "@/components/auth/SignupForm";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { SignupGate } from "@/components/auth/SignupGate";
 
 /**
@@ -17,8 +17,7 @@ export default async function SignupPage() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-16">
-      <h1 className="text-2xl font-bold">無料で試す</h1>
-      {membership ? <SignupGate /> : <SignupForm />}
+      {membership ? <SignupGate /> : <OnboardingWizard />}
     </main>
   );
 }
