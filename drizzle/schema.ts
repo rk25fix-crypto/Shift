@@ -151,6 +151,14 @@ export const shiftAssignments = sqliteTable(
     // auto-generate writes 'draft' rows for the manager to review before
     // 'confirmed' publishes them (docs/plan.md).
     status: text("status").notNull().default("confirmed").$type<"draft" | "confirmed">(),
+    // Staff-recorded clock-in/out ("HH:MM"), set once at day's end
+    // (app/staff-home/page.tsx's ActualTimeRecorder) — null until then, and
+    // may never differ from the shift type's own scheduled start/end. Hours
+    // and payroll calculations (lib/shifts/worked-shift.ts) prefer these
+    // over the shift type's times whenever both are present, since the
+    // schedule is a plan and this is what actually happened.
+    actualStartTime: text("actual_start_time"), // "HH:MM"
+    actualEndTime: text("actual_end_time"), // "HH:MM"
     createdBy: text("created_by"), // Better Auth user.id
     updatedAt: integer("updated_at", { mode: "timestamp" })
       .notNull()

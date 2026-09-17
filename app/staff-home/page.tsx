@@ -9,6 +9,7 @@ import { toWorkedShifts } from "@/lib/shifts/worked-shift";
 import { addDays, formatDateJapanese, monthOf, nextMonth, todayInTimezone } from "@/lib/date";
 import { TimeOffCalendar } from "@/components/staff/TimeOffCalendar";
 import { AvailabilityEditor } from "@/components/staff/AvailabilityEditor";
+import { ActualTimeRecorder } from "@/components/staff/ActualTimeRecorder";
 
 /** スタッフ本人の1画面完結ホーム(design handoff 1c)。管理者向け画面とは別ルート、招待リンクからのみ到達する。 */
 export default async function StaffHomePage() {
@@ -43,6 +44,11 @@ export default async function StaffHomePage() {
     .sort((a, b) => a.date.localeCompare(b.date))[0];
   const upcomingShiftType = upcoming ? shiftTypeById.get(upcoming.shiftTypeId) : undefined;
 
+  const todaysAssignment = thisMonthAssignments.find(
+    (a) => a.date === today && a.status === "confirmed",
+  );
+  const todaysShiftType = todaysAssignment ? shiftTypeById.get(todaysAssignment.shiftTypeId) : undefined;
+
   const payroll =
     hourlyWage != null
       ? estimatePayroll(toWorkedShifts(thisMonthAssignments, shiftTypeById), hourlyWage)
@@ -74,6 +80,18 @@ export default async function StaffHomePage() {
           </div>
         )}
       </div>
+
+      {todaysAssignment && todaysShiftType && (
+        <div className="px-4">
+          <ActualTimeRecorder
+            date={today}
+            scheduledStart={todaysShiftType.startTime}
+            scheduledEnd={todaysShiftType.endTime}
+            initialActualStart={todaysAssignment.actualStartTime}
+            initialActualEnd={todaysAssignment.actualEndTime}
+          />
+        </div>
+      )}
 
       <div className="px-4">
         <p className="mb-2 text-sm font-bold text-ink">休み希望</p>

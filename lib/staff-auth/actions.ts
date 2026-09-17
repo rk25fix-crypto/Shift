@@ -5,6 +5,7 @@ import { claimInviteCore } from "@/lib/staff-invites/write";
 import { setStaffSessionCookie, getCurrentStaffSession } from "@/lib/staff-auth/session";
 import { requestOwnTimeOff as requestOwnTimeOffCore } from "@/lib/time-off/set";
 import { updateStaffAvailabilityCore } from "@/lib/staff/write";
+import { recordActualShiftTimeCore } from "@/lib/shifts/actual-time";
 
 /** Public: claims an invite token and starts the staff's own session — no membership/role involved. */
 export async function claimStaffInvite(
@@ -45,6 +46,31 @@ export async function updateOwnAvailability(input: {
   if (!session) return { error: "セッションが見つかりません。招待リンクをもう一度開いてください。" };
 
   const result = await updateStaffAvailabilityCore(session.organizationId, session.staffId, input);
+  if (!result.error) revalidatePath("/staff-home");
+  return result;
+}
+
+/**
+ * Staff-side: records actual clock-in/out for today's (or any confirmed)
+ * shift (lib/shifts/actual-time.ts's recordActualShiftTimeCore) — same
+ * "staffId always comes from the session, never the client" boundary as
+ * every other action here.
+ */
+export async function recordOwnActualShiftTime(
+  date: string,
+  actualStartTime: string,
+  actualEndTime: string,
+): Promise<{ error: string | null }> {
+  const session = await getCurrentStaffSession();
+  if (!session) return { error: "セッションが見つかりません。招待リンクをもう一度開いてください。" };
+
+  const result = await recordActualShiftTimeCore(
+    session.organizationId,
+    session.staffId,
+    date,
+    actualStartTime,
+    actualEndTime,
+  );
   if (!result.error) revalidatePath("/staff-home");
   return result;
 }

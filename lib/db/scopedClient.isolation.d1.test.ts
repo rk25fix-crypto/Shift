@@ -29,6 +29,7 @@ import { getWorkRuleSettings } from "@/lib/org/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
 import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
 import { getHoursReport } from "@/lib/shifts/hours-report";
+import { recordActualShiftTimeCore } from "@/lib/shifts/actual-time";
 import { createSwapRequestCore, decideSwapRequestCore } from "@/lib/swaps/write";
 import { listRecentAuditLog } from "@/lib/audit/queries";
 import { listSwapRequests } from "@/lib/swaps/queries";
@@ -1444,5 +1445,38 @@ describe("staff invites / staff sessions isolation (lib/staff-invites, lib/staff
 
     const orgBTimeOff = await listTimeOffForRange(orgB.id, "2026-06-25", "2026-06-26");
     expect(orgBTimeOff).toHaveLength(0);
+  });
+});
+
+describe("recordActualShiftTimeCore isolation (staff self-service clock-in/out)", () => {
+  const ACTUAL_TIME_DATE = "2026-06-26";
+
+  it("records the actual time onto the caller's own org's confirmed shift", async () => {
+    const assign = await setShiftAssignment(orgA.id, null, staffA.id, ACTUAL_TIME_DATE, shiftTypeA.id);
+    expect(assign.error).toBeNull();
+
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, ACTUAL_TIME_DATE, "07:10", "15:45");
+    expect(result.error).toBeNull();
+
+    const [row] = await getAssignmentsForDate(orgA.id, ACTUAL_TIME_DATE);
+    expect(row).toMatchObject({ actualStartTime: "07:10", actualEndTime: "15:45" });
+  });
+
+  it("refuses when there is no confirmed shift for that staff+date", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, "2026-06-27", "07:00", "16:00");
+    expect(result.error).toBe("この日に確定したシフトが見つかりません");
+  });
+
+  it("rejects a malformed time instead of writing a bad value", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, ACTUAL_TIME_DATE, "25:99", "16:00");
+    expect(result.error).toBe("時刻の形式が正しくありません");
+  });
+
+  it("never writes into another org when passed a mismatched staffId", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffB.id, ACTUAL_TIME_DATE, "07:00", "16:00");
+    expect(result.error).toBe("この日に確定したシフトが見つかりません");
+
+    const orgBRows = await getAssignmentsForDate(orgB.id, ACTUAL_TIME_DATE);
+    expect(orgBRows.every((r) => r.actualStartTime === null)).toBe(true);
   });
 });

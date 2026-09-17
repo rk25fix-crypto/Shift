@@ -1,9 +1,9 @@
-import { addDays } from "@/lib/date";
 import { workedHours, type WorkedShift } from "@/lib/labor-rules";
 import { estimatePayroll } from "@/lib/payroll";
 import { listStaff, listHourlyWages } from "@/lib/staff/queries";
 import { listShiftTypes, type ShiftTypeRecord } from "@/lib/shift-types/queries";
 import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { resolveAssignmentTimes } from "@/lib/shifts/worked-shift";
 import type { MembershipRole } from "@/lib/org/current";
 
 export interface StaffHoursByShiftType {
@@ -64,13 +64,7 @@ export async function getHoursReport(
     const shiftType = shiftTypeById.get(a.shiftTypeId);
     if (!shiftType) continue;
 
-    const endDate = shiftType.crossesMidnight ? addDays(a.date, 1) : a.date;
-    const shift: WorkedShift = {
-      staffId: a.staffId,
-      startsAt: `${a.date}T${shiftType.startTime}:00Z`,
-      endsAt: `${endDate}T${shiftType.endTime}:00Z`,
-      breakMinutes: shiftType.breakMinutes,
-    };
+    const shift: WorkedShift = { staffId: a.staffId, ...resolveAssignmentTimes(a, shiftType) };
     const hours = workedHours(shift);
 
     const byType = hoursByStaffAndType.get(a.staffId) ?? new Map<string, number>();

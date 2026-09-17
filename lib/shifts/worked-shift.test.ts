@@ -25,6 +25,8 @@ function assignment(overrides: Partial<Assignment> = {}): Assignment {
     shiftTypeId: "early",
     date: "2026-06-01",
     status: "confirmed",
+    actualStartTime: null,
+    actualEndTime: null,
     ...overrides,
   };
 }
@@ -61,6 +63,47 @@ describe("toWorkedShifts", () => {
   it("skips an assignment whose shift type no longer exists", () => {
     const result = toWorkedShifts([assignment({ shiftTypeId: "deleted-type" })], new Map());
     expect(result).toEqual([]);
+  });
+
+  it("prefers actualStartTime/actualEndTime over the shift type's scheduled times when both are recorded", () => {
+    const shiftTypesById = new Map([[EARLY.id, EARLY]]);
+    const result = toWorkedShifts(
+      [assignment({ actualStartTime: "07:15", actualEndTime: "15:30" })],
+      shiftTypesById,
+    );
+
+    expect(result).toEqual([
+      {
+        staffId: "s1",
+        startsAt: "2026-06-01T07:15:00Z",
+        endsAt: "2026-06-01T15:30:00Z",
+        breakMinutes: 60,
+      },
+    ]);
+  });
+
+  it("still rolls the end date forward for a crossesMidnight shift type even with a recorded actual end time", () => {
+    const shiftTypesById = new Map([[NIGHT.id, NIGHT]]);
+    const result = toWorkedShifts(
+      [assignment({ shiftTypeId: "night", actualStartTime: "22:10", actualEndTime: "06:45" })],
+      shiftTypesById,
+    );
+
+    expect(result).toEqual([
+      {
+        staffId: "s1",
+        startsAt: "2026-06-01T22:10:00Z",
+        endsAt: "2026-06-02T06:45:00Z",
+        breakMinutes: 60,
+      },
+    ]);
+  });
+
+  it("falls back to the scheduled time when only one of actualStartTime/actualEndTime is recorded", () => {
+    const shiftTypesById = new Map([[EARLY.id, EARLY]]);
+    const result = toWorkedShifts([assignment({ actualStartTime: "07:15" })], shiftTypesById);
+
+    expect(result[0]).toMatchObject({ startsAt: "2026-06-01T07:15:00Z", endsAt: "2026-06-01T16:00:00Z" });
   });
 
   it("converts multiple assignments in order", () => {
