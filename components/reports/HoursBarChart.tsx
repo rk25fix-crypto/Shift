@@ -63,9 +63,14 @@ export function HoursBarChart({ report }: HoursBarChartProps) {
         <div className="flex-1 overflow-x-auto">
           <div className="flex gap-4 pl-1">
             {report.rows.map((row) => (
-              <span key={row.staffId} className="w-14 shrink-0 truncate text-center text-xs font-bold text-ink">
-                {row.staffName}
-              </span>
+              <div key={row.staffId} className="flex w-14 shrink-0 flex-col items-center gap-0.5">
+                <span className="w-full truncate text-center text-xs font-bold text-ink">{row.staffName}</span>
+                {row.estimatedPay != null && (
+                  <span className="text-[10px] font-bold" style={{ color: "var(--color-info-ink)" }}>
+                    {row.estimatedPay.toLocaleString()}円
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         </div>

@@ -21,7 +21,7 @@ export default async function ReportsPage({
   const monthStart = `${month}-01`;
   const monthEndExclusive = `${nextMonth(month)}-01`;
 
-  const report = await getHoursReport(organizationId, monthStart, monthEndExclusive);
+  const report = await getHoursReport(organizationId, role, monthStart, monthEndExclusive);
   const monthLabel = month.replace("-", "年") + "月";
 
   return (
@@ -38,6 +38,19 @@ export default async function ReportsPage({
       <p className="px-4 text-xs text-ink-weakest">
         確定済みのシフトのみを集計しています(下書きは含みません)。
       </p>
+      {report.totalPay != null && (
+        <div
+          className="mx-4 flex flex-col gap-1 rounded-[16px] border p-3"
+          style={{ borderColor: "var(--color-info-border)", background: "var(--color-info-soft)" }}
+        >
+          <p className="text-xs font-bold" style={{ color: "var(--color-info-ink)" }}>
+            {monthLabel}の給与概算合計
+          </p>
+          <p className="text-2xl font-bold font-heading" style={{ color: "var(--color-info-ink)" }}>
+            {report.totalPay.toLocaleString()}円
+          </p>
+        </div>
+      )}
       {report.rows.length === 0 ? (
         <p className="px-4 text-sm text-ink-weak">この月はまだ確定済みのシフトがありません。</p>
       ) : (

@@ -12,7 +12,7 @@ import {
   swapRequests,
 } from "@/drizzle/schema";
 import { user as authUser } from "@/drizzle/auth-schema";
-import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
+import { listStaff, getStaff, getStaffHourlyWage, listHourlyWages } from "@/lib/staff/queries";
 import { createStaffCore, deactivateStaffCore, updateStaffCore } from "@/lib/staff/write";
 import { listShiftTypes, getShiftType } from "@/lib/shift-types/queries";
 import { createShiftTypeCore, deleteShiftTypeCore, updateShiftTypeCore } from "@/lib/shift-types/write";
@@ -28,6 +28,7 @@ import { setTimeOffRequest } from "@/lib/time-off/set";
 import { getWorkRuleSettings } from "@/lib/org/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
 import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
+import { getHoursReport } from "@/lib/shifts/hours-report";
 import { createSwapRequestCore, decideSwapRequestCore } from "@/lib/swaps/write";
 import { listRecentAuditLog } from "@/lib/audit/queries";
 import { listSwapRequests } from "@/lib/swaps/queries";
@@ -145,6 +146,15 @@ describe("staff_compensation isolation (column-level, RLS-equivalent)", () => {
   it("owner of org A cannot read org B's staff wage via a mismatched call", async () => {
     // staffB belongs to orgB — calling with orgA's id must not leak it.
     expect(await getStaffHourlyWage(orgA.id, staffB.id, "owner")).toBeNull();
+  });
+
+  it("listHourlyWages (bulk, for the hours/pay report) only returns the calling org's wages, and only for an owner", async () => {
+    const asOwner = await listHourlyWages(orgA.id, "owner");
+    expect(asOwner.get(staffA.id)).toBe(1200);
+    expect(asOwner.has(staffB.id)).toBe(false);
+
+    expect((await listHourlyWages(orgA.id, "admin")).size).toBe(0);
+    expect((await listHourlyWages(orgA.id, "staff")).size).toBe(0);
   });
 });
 
@@ -873,6 +883,23 @@ describe("getStaffPayrollEstimate isolation", () => {
       estimatedPay: 0,
       premiums: { nightHours: 0, overtimeHours: 0, holidayHours: 0 },
     });
+  });
+
+  it("getHoursReport includes pay only for an owner, and never leaks another org's row", async () => {
+    const monthStart = "2026-10-01";
+    const monthEndExclusive = "2026-11-01";
+
+    const asOwner = await getHoursReport(orgA.id, "owner", monthStart, monthEndExclusive);
+    const rowA = asOwner.rows.find((r) => r.staffId === payrollStaffA.id);
+    expect(rowA).toMatchObject({ totalHours: 9, estimatedPay: 11100 });
+    expect(asOwner.totalPay).toBeGreaterThanOrEqual(11100);
+    expect(asOwner.rows.some((r) => r.staffId === payrollStaffB.id)).toBe(false);
+
+    const asAdmin = await getHoursReport(orgA.id, "admin", monthStart, monthEndExclusive);
+    expect(asAdmin.totalPay).toBeNull();
+    expect(asAdmin.rows.find((r) => r.staffId === payrollStaffA.id)?.estimatedPay).toBeNull();
+    // Hours themselves aren't wage-sensitive — still visible to admin.
+    expect(asAdmin.rows.find((r) => r.staffId === payrollStaffA.id)?.totalHours).toBe(9);
   });
 });
 
