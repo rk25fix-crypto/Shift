@@ -31,6 +31,13 @@ export default async function OrganizationSettingsPage() {
             </Link>
           </li>
         )}
+        {isManager(role) && (
+          <li>
+            <Link href="/settings/reports" className="text-primary-ink">
+              稼働レポート
+            </Link>
+          </li>
+        )}
         <li>
           <Link href="/billing" className="text-primary-ink">
             お支払い・プラン
