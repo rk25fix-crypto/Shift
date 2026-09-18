@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireCurrentMembership } from "@/lib/org/current";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { ShiftTypeList } from "@/components/shift-types/ShiftTypeList";
+import { ShiftTypePresets } from "@/components/shift-types/ShiftTypePresets";
 
 export default async function ShiftTypesSettingsPage() {
   const { organizationId } = await requireCurrentMembership();
@@ -15,6 +16,7 @@ export default async function ShiftTypesSettingsPage() {
           + 追加
         </Link>
       </div>
+      <ShiftTypePresets />
       <ShiftTypeList shiftTypes={shiftTypes} />
     </div>
   );

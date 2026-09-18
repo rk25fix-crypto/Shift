@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import clsx from "clsx";
 import { assignShift } from "@/lib/shifts/actions";
+import { requestTimeOff } from "@/lib/time-off/actions";
 import type { ShiftTypeRecord } from "@/lib/shift-types/queries";
 
 interface AssignShiftSheetProps {
@@ -10,6 +11,7 @@ interface AssignShiftSheetProps {
   staffName: string;
   date: string;
   currentShiftTypeId: string | null;
+  isTimeOffRequested: boolean;
   shiftTypes: ShiftTypeRecord[];
   onClose: () => void;
 }
@@ -19,20 +21,35 @@ interface AssignShiftSheetProps {
  * primary mobile input pattern for Phase 1a (docs/plan.md, "タップでチップ
  * 選択"), replacing the `<select>`/inline-table editing both legacy
  * prototypes used.
+ *
+ * A cell is exactly one of: unassigned, a requested day off, or a shift —
+ * assignShift/requestTimeOff each clear the other two states server-side
+ * (see lib/shifts/assign.ts, lib/time-off/set.ts), so this sheet just needs
+ * to show which one is currently selected.
  */
 export function AssignShiftSheet({
   staffId,
   staffName,
   date,
   currentShiftTypeId,
+  isTimeOffRequested,
   shiftTypes,
   onClose,
 }: AssignShiftSheetProps) {
   const [isPending, startTransition] = useTransition();
 
-  function handleSelect(shiftTypeId: string | null) {
+  const isUnassigned = currentShiftTypeId === null && !isTimeOffRequested;
+
+  function handleSelectShift(shiftTypeId: string | null) {
     startTransition(async () => {
       await assignShift(staffId, date, shiftTypeId);
+      onClose();
+    });
+  }
+
+  function handleSelectTimeOff() {
+    startTransition(async () => {
+      await requestTimeOff(staffId, date);
       onClose();
     });
   }
@@ -51,20 +68,31 @@ export function AssignShiftSheet({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => handleSelect(null)}
+            onClick={() => handleSelectShift(null)}
             className={clsx(
               "rounded-lg border px-4 py-3 text-left text-base disabled:opacity-50",
-              currentShiftTypeId === null ? "border-indigo-600 bg-indigo-50" : "border-gray-200",
+              isUnassigned ? "border-indigo-600 bg-indigo-50" : "border-gray-200",
             )}
           >
             休み(未割当)
+          </button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={handleSelectTimeOff}
+            className={clsx(
+              "rounded-lg border px-4 py-3 text-left text-base disabled:opacity-50",
+              isTimeOffRequested ? "border-indigo-600 bg-indigo-50" : "border-gray-200",
+            )}
+          >
+            休み希望
           </button>
           {shiftTypes.map((shiftType) => (
             <button
               key={shiftType.id}
               type="button"
               disabled={isPending}
-              onClick={() => handleSelect(shiftType.id)}
+              onClick={() => handleSelectShift(shiftType.id)}
               className={clsx(
                 "rounded-lg border px-4 py-3 text-left text-base disabled:opacity-50",
                 currentShiftTypeId === shiftType.id

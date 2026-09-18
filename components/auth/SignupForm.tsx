@@ -43,7 +43,11 @@ export function SignupForm() {
         setError(provisionError);
         return;
       }
-      router.push("/today");
+      // replace, not push: /signup must not stay in history — a Back tap
+      // afterwards would otherwise restore the cached pre-membership RSC
+      // payload (SignupForm's own "details" step, not SignupGate) and let
+      // the whole flow be walked again.
+      router.replace("/today");
     });
   }
 

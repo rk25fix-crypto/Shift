@@ -27,6 +27,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icons/|api/stripe/webhook|.*\\.(?:svg|png|jpg|jpeg|webp)$).*)",
+    // api/test/ (app/api/test/otp/route.ts) is itself gated by
+    // ENABLE_TEST_UTILS and 404s without it — excluded here too so E2E can
+    // read a just-sent OTP before a session cookie exists.
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icons/|api/stripe/webhook|api/test/|.*\\.(?:svg|png|jpg|jpeg|webp)$).*)",
   ],
 };

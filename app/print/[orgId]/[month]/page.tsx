@@ -17,6 +17,7 @@ export default async function PrintSchedulePage({
   // still governed by the caller's own membership — a mismatch here means
   // "not your organization", not a lookup by arbitrary orgId.
   if (orgId !== organizationId) notFound();
+  if (!/^\d{4}-\d{2}$/.test(month)) notFound();
 
   const [staff, shiftTypes, assignments] = await Promise.all([
     listStaff(organizationId),

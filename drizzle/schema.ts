@@ -117,6 +117,10 @@ export const shiftTypes = sqliteTable(
     breakMinutes: integer("break_minutes").notNull().default(0),
     isRequired: integer("is_required", { mode: "boolean" }).notNull().default(false),
     isBalanced: integer("is_balanced", { mode: "boolean" }).notNull().default(false),
+    // How many staff must fill this shift type per day (e.g. 早番3人).
+    // Only meaningful when isRequired — the generator (lib/shift-generator)
+    // reads it to assign more than one person per required shift type.
+    requiredCount: integer("required_count").notNull().default(1),
     colorKey: text("color_key"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
@@ -124,6 +128,7 @@ export const shiftTypes = sqliteTable(
   (table) => [
     unique("shift_types_org_code_unique").on(table.organizationId, table.code),
     index("shift_types_org_idx").on(table.organizationId),
+    check("shift_types_required_count_check", sql`${table.requiredCount} >= 1`),
   ],
 );
 
@@ -199,8 +204,18 @@ export const swapRequests = sqliteTable(
     toStaffId: text("to_staff_id")
       .notNull()
       .references(() => staff.id),
-    fromShiftTypeId: text("from_shift_type_id").references(() => shiftTypes.id),
-    toShiftTypeId: text("to_shift_type_id").references(() => shiftTypes.id),
+    // SET NULL (not the default RESTRICT): a swap request referencing a
+    // shift type is not "in use" the way a live shift_assignments row is
+    // (that FK stays RESTRICT — see lib/shift-types/write.ts). Without this,
+    // any shift type ever named in any swap request — pending, approved, or
+    // long since rejected — could never be deleted again. Deletion while a
+    // *pending* request still references the type is blocked at the
+    // application layer instead (deleteShiftTypeCore), since by the time
+    // this FK fires it's too late to give a useful error.
+    fromShiftTypeId: text("from_shift_type_id").references(() => shiftTypes.id, {
+      onDelete: "set null",
+    }),
+    toShiftTypeId: text("to_shift_type_id").references(() => shiftTypes.id, { onDelete: "set null" }),
     status: text("status").notNull().default("pending").$type<"pending" | "approved" | "rejected">(),
     requestedBy: text("requested_by"), // Better Auth user.id
     decidedBy: text("decided_by"),
@@ -243,11 +258,18 @@ export const auditLog = sqliteTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     actorId: text("actor_id"), // Better Auth user.id
-    action: text("action").notNull(),
-    entity: text("entity").notNull(),
+    action: text("action").notNull().$type<"create" | "update" | "delete">(),
+    entity: text("entity").notNull().$type<"staff" | "shift_type" | "shift_assignment">(),
     entityId: text("entity_id"),
     diff: text("diff", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
-  (table) => [index("audit_log_org_created_idx").on(table.organizationId, table.createdAt)],
+  (table) => [
+    index("audit_log_org_created_idx").on(table.organizationId, table.createdAt),
+    check("audit_log_action_check", sql`${table.action} in ('create', 'update', 'delete')`),
+    check(
+      "audit_log_entity_check",
+      sql`${table.entity} in ('staff', 'shift_type', 'shift_assignment')`,
+    ),
+  ],
 );

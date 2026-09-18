@@ -8,6 +8,27 @@
       "when": 1788437095941,
       "tag": "0000_lying_menace",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788711760835,
+      "tag": "0001_cuddly_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789202233052,
+      "tag": "0002_kind_phantom_reporter",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789202777130,
+      "tag": "0003_broad_punisher",
+      "breakpoints": true
     }
   ]
 }

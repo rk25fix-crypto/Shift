@@ -4,6 +4,9 @@ import {
   detectBreakViolations,
   detectConsecutiveDayViolations,
   detectHoursViolations,
+  filterBreakViolationsToRange,
+  filterConsecutiveDayViolationsToRange,
+  filterHoursViolationsToRange,
   type WorkedShift,
 } from "@/lib/labor-rules";
 
@@ -156,5 +159,68 @@ describe("detectBreakViolations", () => {
   it("does not require a break for a short shift", () => {
     const s = shift("s1", "2026-06-01", 9, 14, 0); // 5h gross, no break required
     expect(detectBreakViolations([s])).toHaveLength(0);
+  });
+});
+
+describe("filterConsecutiveDayViolationsToRange", () => {
+  it("keeps a violation whose range overlaps the display window", () => {
+    const violations = [{ staffId: "s1", startDate: "2026-05-28", endDate: "2026-06-03", consecutiveDays: 7 }];
+    expect(filterConsecutiveDayViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual(violations);
+  });
+
+  it("drops a violation entirely before the display window", () => {
+    const violations = [{ staffId: "s1", startDate: "2026-05-01", endDate: "2026-05-10", consecutiveDays: 10 }];
+    expect(filterConsecutiveDayViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual([]);
+  });
+
+  it("drops a violation entirely after the display window", () => {
+    const violations = [{ staffId: "s1", startDate: "2026-07-05", endDate: "2026-07-12", consecutiveDays: 8 }];
+    expect(filterConsecutiveDayViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual([]);
+  });
+});
+
+describe("filterHoursViolationsToRange", () => {
+  it("keeps a week violation whose range overlaps the display window", () => {
+    const violations = [
+      {
+        staffId: "s1",
+        periodStart: "2026-05-31",
+        periodEnd: "2026-06-06",
+        totalHours: 50,
+        limitHours: 40,
+        period: "week" as const,
+      },
+    ];
+    expect(filterHoursViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual(violations);
+  });
+
+  it("drops a month violation for a different month", () => {
+    const violations = [
+      {
+        staffId: "s1",
+        periodStart: "2026-05-01",
+        periodEnd: "2026-05-31",
+        totalHours: 180,
+        limitHours: 160,
+        period: "month" as const,
+      },
+    ];
+    expect(filterHoursViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual([]);
+  });
+});
+
+describe("filterBreakViolationsToRange", () => {
+  it("keeps a violation on a date inside the display window", () => {
+    const violations = [
+      { staffId: "s1", date: "2026-06-15", workedMinutes: 600, breakMinutes: 30, requiredBreakMinutes: 60 },
+    ];
+    expect(filterBreakViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual(violations);
+  });
+
+  it("drops a violation on a date outside the display window", () => {
+    const violations = [
+      { staffId: "s1", date: "2026-05-31", workedMinutes: 600, breakMinutes: 30, requiredBreakMinutes: 60 },
+    ];
+    expect(filterBreakViolationsToRange(violations, "2026-06-01", "2026-07-01")).toEqual([]);
   });
 });
