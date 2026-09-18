@@ -7,12 +7,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("BottomNav", () => {
-  it("renders all five tabs and highlights the active one", () => {
+  it("renders all three tabs and highlights the active one", () => {
     render(<BottomNav />);
 
     expect(screen.getByRole("navigation")).toBeInTheDocument();
-    expect(screen.getByText("今日")).toHaveClass("text-indigo-600");
-    expect(screen.getByText("スタッフ")).toHaveClass("text-gray-500");
-    expect(screen.getAllByRole("link")).toHaveLength(5);
+    expect(screen.getByText("ホーム")).toHaveStyle({ color: "var(--color-primary-ink)" });
+    expect(screen.getByText("スタッフ")).toHaveStyle({ color: "var(--color-ink-weakest)" });
+    expect(screen.getAllByRole("link")).toHaveLength(3);
   });
 });

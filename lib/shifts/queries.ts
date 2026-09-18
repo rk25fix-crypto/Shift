@@ -9,6 +9,9 @@ export interface Assignment {
   shiftTypeId: string;
   date: string;
   status: "draft" | "confirmed";
+  /** Staff-recorded actual clock-in/out ("HH:MM"), null until recorded (lib/shifts/actual-time.ts). */
+  actualStartTime: string | null;
+  actualEndTime: string | null;
 }
 
 export async function getAssignmentsForDate(
@@ -115,5 +118,7 @@ function toAssignment(row: AssignmentRow): Assignment {
     shiftTypeId: row.shiftTypeId,
     date: row.date,
     status: row.status,
+    actualStartTime: row.actualStartTime,
+    actualEndTime: row.actualEndTime,
   };
 }

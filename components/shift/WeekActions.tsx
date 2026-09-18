@@ -74,7 +74,7 @@ export function WeekActions({
 
   if (!hasRequiredShiftTypes) {
     return (
-      <p className="px-4 text-sm text-gray-500">
+      <p className="px-4 text-sm text-ink-weak">
         自動生成を使うには、設定 &gt; シフト種別で「毎日必須のシフト」を1つ以上有効にしてください。
       </p>
     );
@@ -87,7 +87,8 @@ export function WeekActions({
           type="button"
           disabled={isPending}
           onClick={handleGenerate}
-          className="rounded-full border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 disabled:opacity-50"
+          className="rounded-full border-2 px-4 py-2 text-sm font-bold disabled:opacity-50"
+          style={{ borderColor: "var(--color-primary)", color: "var(--color-primary-ink)" }}
         >
           この週を自動生成
         </button>
@@ -97,7 +98,8 @@ export function WeekActions({
               type="button"
               disabled={isPending}
               onClick={handleConfirm}
-              className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              style={{ background: "var(--color-primary)" }}
             >
               下書きを確定する
             </button>
@@ -105,14 +107,14 @@ export function WeekActions({
               type="button"
               disabled={isPending}
               onClick={handleDiscard}
-              className="rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-600 disabled:opacity-50"
+              className="rounded-full border border-border px-4 py-2 text-sm text-ink-weak disabled:opacity-50"
             >
               下書きを破棄する
             </button>
           </>
         )}
       </div>
-      {message && <p className="text-sm text-gray-600">{message}</p>}
+      {message && <p className="text-sm text-ink-weak">{message}</p>}
     </div>
   );
 }

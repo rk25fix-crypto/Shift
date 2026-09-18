@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shift-e2e",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "e2e:server"],
+      "port": 3000
+    }
+  ]
+}

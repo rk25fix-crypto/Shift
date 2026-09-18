@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readTestOtp, signUpNewOrg } from "./fixtures";
+import { dismissInstallBanner, readTestOtp, signUpNewOrg } from "./fixtures";
 
 /**
  * Covers app/(auth)/signup/page.tsx's SignupGate: an already-logged-in
@@ -33,23 +33,12 @@ test.describe("signup revisit guard", () => {
     await signUpNewOrg(page, { businessName: "テスト第一希望保育園", email });
 
     await page.goto("/signup");
-
-    // InstallPromptBanner (components/ui/InstallPromptBanner.tsx) is `fixed`
-    // at the viewport bottom for iOS-flavored user agents (Playwright's
-    // iPhone 13 emulation included) and can sit over this page's bottom
-    // button — dismiss it first, the same way e2e/fixtures.ts's
-    // signUpNewOrg() does.
-    const dismissBanner = page.getByRole("button", { name: "閉じる" });
-    const bannerAppeared = await dismissBanner
-      .waitFor({ state: "visible", timeout: 5_000 })
-      .then(() => true, () => false);
-    if (bannerAppeared) {
-      await dismissBanner.click();
-    }
+    await dismissInstallBanner(page);
 
     await page.getByRole("button", { name: "別の事業所を新しく追加する" }).click();
 
     await page.getByLabel("事業所名").fill("テスト第二希望保育園");
+    await page.getByRole("button", { name: /その他/ }).click();
     // Re-using the same email is deliberate: Better Auth's email-otp
     // re-authenticates an existing user on verifyOtp rather than erroring,
     // which is exactly the machinery provisionOrganization() relies on to
@@ -60,13 +49,17 @@ test.describe("signup revisit guard", () => {
     await expect(page.getByLabel("認証コード")).toBeVisible();
     const otp = await readTestOtp(page, email);
     await page.getByLabel("認証コード").fill(otp);
-    await page.getByRole("button", { name: "始める" }).click();
+    await page.getByRole("button", { name: "次へ" }).click();
+
+    // 勤務の確認 → 名前だけ入力(0人のまま)。
+    await page.getByRole("button", { name: "次へ" }).click();
+    await page.getByRole("button", { name: "0人でシフトを作る" }).click();
 
     await page.waitForURL("/today");
 
     // The newly created org must be the one now in view, not a silent
-    // fallback to the first — see provisionOrganization()'s
-    // setCurrentOrgCookie() call (lib/auth/actions.ts).
+    // fallback to the first — see provisionOrganizationCore()'s
+    // setCurrentOrgCookie() call (lib/auth/provision.ts).
     await page.goto("/settings/organization");
     await expect(page.getByText("事業所を切り替え")).toBeVisible();
     await expect(

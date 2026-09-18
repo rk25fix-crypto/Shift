@@ -10,7 +10,7 @@ export default defineConfig({
     include: ["**/*.test.{ts,tsx}"],
     // *.d1.test.ts runs under vitest.d1.config.ts (real Workers runtime via
     // Miniflare) — jsdom can't resolve `cloudflare:workers`/`cloudflare:test`.
-    exclude: ["node_modules", ".next", "e2e", "**/*.d1.test.ts"],
+    exclude: ["node_modules", ".next", "e2e", "**/*.d1.test.ts", ".claude/worktrees/**"],
   },
   resolve: {
     alias: {

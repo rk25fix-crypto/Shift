@@ -30,9 +30,10 @@ test.describe("week view", () => {
     await page.waitForURL("/settings/shift-types");
 
     await page.goto("/week");
-    // Scoped to the table body: while the sheet is open, "テスト太郎" also
-    // matches the sheet's own "テスト太郎さんのシフト" heading.
-    await expect(page.locator("tbody", { hasText: "テスト太郎" })).toBeVisible();
+    // The sheet isn't open yet at this point, so a plain text match is
+    // unambiguous (once it's open, "テスト太郎" also matches its own
+    // "テスト太郎さんのシフト" heading — later assertions here don't re-check this).
+    await expect(page.getByText("テスト太郎")).toBeVisible();
     await expect(page.getByRole("button", { name: "―" })).toHaveCount(7);
 
     await page.getByRole("button", { name: "―" }).first().click();

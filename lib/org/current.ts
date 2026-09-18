@@ -23,8 +23,8 @@ export const CURRENT_ORG_COOKIE = "shift_current_org";
 
 /**
  * Shared by switchOrganization() (lib/org/actions.ts) and
- * provisionOrganization() (lib/auth/actions.ts) so the cookie's options never
- * drift between the two places that set it.
+ * provisionOrganizationCore() (lib/auth/provision.ts) so the cookie's
+ * options never drift between the two places that set it.
  */
 export async function setCurrentOrgCookie(organizationId: string): Promise<void> {
   (await cookies()).set(CURRENT_ORG_COOKIE, organizationId, {

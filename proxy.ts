@@ -1,7 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/pricing", "/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/pricing", "/login", "/signup", "/staff-home"];
 
 /**
  * Optimistic, cookie-presence-only redirect — Better Auth's own docs call
@@ -10,15 +10,24 @@ const PUBLIC_PATHS = ["/", "/pricing", "/login", "/signup"];
  * lib/org/current.ts's requireCurrentMembership() (which calls
  * auth.api.getSession()); this just avoids rendering protected UI for an
  * obviously-signed-out visitor before that check runs.
+ *
+ * /invite/[token] and /staff-home are public here too: a staff member has
+ * no Better Auth account at all, so there is no Better Auth session cookie
+ * for this check to find. Their real credential (the invite token, or the
+ * staff session cookie set once it's claimed — lib/staff-auth/session.ts)
+ * is validated per-page instead, same division of labor as everything else
+ * this comment describes.
  */
 export async function proxy(request: NextRequest) {
-  const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname === path);
+  const { pathname } = request.nextUrl;
+  const isPublicPath =
+    PUBLIC_PATHS.some((path) => pathname === path) || pathname.startsWith("/invite/");
   if (isPublicPath) return NextResponse.next();
 
   const sessionCookie = getSessionCookie(request);
   if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 

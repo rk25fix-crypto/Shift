@@ -151,6 +151,14 @@ export const shiftAssignments = sqliteTable(
     // auto-generate writes 'draft' rows for the manager to review before
     // 'confirmed' publishes them (docs/plan.md).
     status: text("status").notNull().default("confirmed").$type<"draft" | "confirmed">(),
+    // Staff-recorded clock-in/out ("HH:MM"), set once at day's end
+    // (app/staff-home/page.tsx's ActualTimeRecorder) — null until then, and
+    // may never differ from the shift type's own scheduled start/end. Hours
+    // and payroll calculations (lib/shifts/worked-shift.ts) prefer these
+    // over the shift type's times whenever both are present, since the
+    // schedule is a plan and this is what actually happened.
+    actualStartTime: text("actual_start_time"), // "HH:MM"
+    actualEndTime: text("actual_end_time"), // "HH:MM"
     createdBy: text("created_by"), // Better Auth user.id
     updatedAt: integer("updated_at", { mode: "timestamp" })
       .notNull()
@@ -271,5 +279,52 @@ export const auditLog = sqliteTable(
       "audit_log_entity_check",
       sql`${table.entity} in ('staff', 'shift_type', 'shift_assignment')`,
     ),
+  ],
+);
+
+// Staff self-service login (docs/plan.md Phase 3) is a link-only session, not
+// a Better Auth account — no password/OTP (design_handoff_shift_bright_flow/
+// README.md 2i「招待リンク先」). staffInvites is the one-time link an admin
+// hands a staff member; claiming it (lib/staff-invites/actions.ts) issues a
+// longer-lived staffSessions row instead of reusing the invite token itself,
+// so a leaked/bookmarked invite link can't be replayed after it's claimed.
+export const staffInvites = sqliteTable(
+  "staff_invites",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    claimedAt: integer("claimed_at", { mode: "timestamp" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_invites_token_unique").on(table.token),
+    index("staff_invites_staff_idx").on(table.staffId),
+  ],
+);
+
+export const staffSessions = sqliteTable(
+  "staff_sessions",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_sessions_token_unique").on(table.token),
+    index("staff_sessions_staff_idx").on(table.staffId),
   ],
 );

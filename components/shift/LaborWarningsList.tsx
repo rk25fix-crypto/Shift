@@ -41,9 +41,9 @@ export function LaborWarningsList({ warnings, staffNameById }: LaborWarningsList
   if (items.length === 0) return null;
 
   return (
-    <div className="mx-4 flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3">
-      <p className="text-sm font-medium text-amber-800">勤務ルール警告</p>
-      <ul className="flex flex-col gap-1 text-sm text-amber-700">
+    <div className="mx-4 flex flex-col gap-1 rounded-[16px] border p-3" style={{ borderColor: "var(--color-warn-border)", background: "var(--color-warn-soft)" }}>
+      <p className="text-sm font-bold" style={{ color: "var(--color-warn-ink)" }}>勤務ルール警告</p>
+      <ul className="flex flex-col gap-1 text-sm" style={{ color: "var(--color-warn-ink)" }}>
         {items.map((item, i) => (
           <li key={i}>⚠ {item}</li>
         ))}

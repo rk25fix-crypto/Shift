@@ -12,7 +12,7 @@ import {
   swapRequests,
 } from "@/drizzle/schema";
 import { user as authUser } from "@/drizzle/auth-schema";
-import { listStaff, getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
+import { listStaff, getStaff, getStaffHourlyWage, listHourlyWages } from "@/lib/staff/queries";
 import { createStaffCore, deactivateStaffCore, updateStaffCore } from "@/lib/staff/write";
 import { listShiftTypes, getShiftType } from "@/lib/shift-types/queries";
 import { createShiftTypeCore, deleteShiftTypeCore, updateShiftTypeCore } from "@/lib/shift-types/write";
@@ -28,10 +28,17 @@ import { setTimeOffRequest } from "@/lib/time-off/set";
 import { getWorkRuleSettings } from "@/lib/org/queries";
 import { getLaborWarnings } from "@/lib/shifts/labor-warnings";
 import { getStaffPayrollEstimate } from "@/lib/shifts/payroll";
+import { getHoursReport } from "@/lib/shifts/hours-report";
+import { recordActualShiftTimeCore } from "@/lib/shifts/actual-time";
 import { createSwapRequestCore, decideSwapRequestCore } from "@/lib/swaps/write";
 import { listRecentAuditLog } from "@/lib/audit/queries";
 import { listSwapRequests } from "@/lib/swaps/queries";
-import { shiftAssignments } from "@/drizzle/schema";
+import { shiftAssignments, staffInvites, staffSessions } from "@/drizzle/schema";
+import { createInviteCore, claimInviteCore } from "@/lib/staff-invites/write";
+import { getInvitePreview } from "@/lib/staff-invites/queries";
+import { getOwnHourlyWage } from "@/lib/staff/queries";
+import { updateStaffAvailabilityCore } from "@/lib/staff/write";
+import { requestOwnTimeOff } from "@/lib/time-off/set";
 
 /**
  * The real backstop for tenant isolation now that D1 has no Row-Level
@@ -140,6 +147,15 @@ describe("staff_compensation isolation (column-level, RLS-equivalent)", () => {
   it("owner of org A cannot read org B's staff wage via a mismatched call", async () => {
     // staffB belongs to orgB — calling with orgA's id must not leak it.
     expect(await getStaffHourlyWage(orgA.id, staffB.id, "owner")).toBeNull();
+  });
+
+  it("listHourlyWages (bulk, for the hours/pay report) only returns the calling org's wages, and only for an owner", async () => {
+    const asOwner = await listHourlyWages(orgA.id, "owner");
+    expect(asOwner.get(staffA.id)).toBe(1200);
+    expect(asOwner.has(staffB.id)).toBe(false);
+
+    expect((await listHourlyWages(orgA.id, "admin")).size).toBe(0);
+    expect((await listHourlyWages(orgA.id, "staff")).size).toBe(0);
   });
 });
 
@@ -869,6 +885,23 @@ describe("getStaffPayrollEstimate isolation", () => {
       premiums: { nightHours: 0, overtimeHours: 0, holidayHours: 0 },
     });
   });
+
+  it("getHoursReport includes pay only for an owner, and never leaks another org's row", async () => {
+    const monthStart = "2026-10-01";
+    const monthEndExclusive = "2026-11-01";
+
+    const asOwner = await getHoursReport(orgA.id, "owner", monthStart, monthEndExclusive);
+    const rowA = asOwner.rows.find((r) => r.staffId === payrollStaffA.id);
+    expect(rowA).toMatchObject({ totalHours: 9, estimatedPay: 11100 });
+    expect(asOwner.totalPay).toBeGreaterThanOrEqual(11100);
+    expect(asOwner.rows.some((r) => r.staffId === payrollStaffB.id)).toBe(false);
+
+    const asAdmin = await getHoursReport(orgA.id, "admin", monthStart, monthEndExclusive);
+    expect(asAdmin.totalPay).toBeNull();
+    expect(asAdmin.rows.find((r) => r.staffId === payrollStaffA.id)?.estimatedPay).toBeNull();
+    // Hours themselves aren't wage-sensitive — still visible to admin.
+    expect(asAdmin.rows.find((r) => r.staffId === payrollStaffA.id)?.totalHours).toBe(9);
+  });
 });
 
 describe("createSwapRequestCore/decideSwapRequestCore isolation (write path)", () => {
@@ -1299,5 +1332,151 @@ describe("audit log isolation (listRecentAuditLog + write-path integration)", ()
       entityId: staffA.id,
       action: "update",
     });
+  });
+});
+
+describe("staff invites / staff sessions isolation (lib/staff-invites, lib/staff-auth)", () => {
+  it("createInviteCore refuses to issue an invite for another org's staffId", async () => {
+    const result = await createInviteCore(orgA.id, staffB.id);
+    expect(result.token).toBeNull();
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const rows = await getRawDb().select().from(staffInvites).where(eq(staffInvites.staffId, staffB.id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("an invite is scoped to the org it was issued for, end to end through claim", async () => {
+    const issued = await createInviteCore(orgA.id, staffA.id);
+    expect(issued.error).toBeNull();
+    const token = issued.token!;
+
+    const preview = await getInvitePreview(token);
+    expect(preview).toMatchObject({ status: "valid", staffName: "スタッフA", organizationId: orgA.id });
+
+    const claimed = await claimInviteCore(token, { fixedDaysOff: [0], unavailableShiftTypeIds: [] });
+    if ("error" in claimed) throw new Error(`unexpected claim failure: ${claimed.error}`);
+    expect(claimed.organizationId).toBe(orgA.id);
+    expect(claimed.staffId).toBe(staffA.id);
+
+    // getOwnHourlyWage must never see across the org boundary even when
+    // given a staffId from a different org than the one it's called with —
+    // the same defense-in-depth this file checks for getStaffHourlyWage.
+    expect(await getOwnHourlyWage(orgA.id, staffB.id)).toBeNull();
+    expect(await getOwnHourlyWage(orgA.id, staffA.id)).toBe(1200);
+
+    const db = getRawDb();
+    await db.delete(staffSessions).where(eq(staffSessions.token, claimed.sessionToken));
+    await db.delete(staffInvites).where(eq(staffInvites.token, token));
+  });
+
+  it("a claimed invite token cannot be claimed a second time (no double session issuance)", async () => {
+    const issued = await createInviteCore(orgB.id, staffB.id);
+    expect(issued.error).toBeNull();
+    const token = issued.token!;
+
+    const first = await claimInviteCore(token, { fixedDaysOff: [], unavailableShiftTypeIds: [] });
+    if ("error" in first) throw new Error(`unexpected first-claim failure: ${first.error}`);
+
+    const second = await claimInviteCore(token, { fixedDaysOff: [], unavailableShiftTypeIds: [] });
+    expect("error" in second).toBe(true);
+    if (!("error" in second)) throw new Error("second claim unexpectedly succeeded");
+    expect(second.error).toBe("この招待リンクはすでに使用されています");
+
+    const db = getRawDb();
+    const sessions = await db.select().from(staffSessions).where(eq(staffSessions.staffId, staffB.id));
+    expect(sessions).toHaveLength(1); // only the first claim's session exists
+
+    await db.delete(staffSessions).where(eq(staffSessions.token, first.sessionToken));
+    await db.delete(staffInvites).where(eq(staffInvites.token, token));
+  });
+
+  it("re-issuing an invite revokes the staff member's existing sessions", async () => {
+    const issued = await createInviteCore(orgA.id, staffA.id);
+    const claimed = await claimInviteCore(issued.token!, {
+      fixedDaysOff: [],
+      unavailableShiftTypeIds: [],
+    });
+    if ("error" in claimed) throw new Error(`unexpected claim failure: ${claimed.error}`);
+
+    const db = getRawDb();
+    const beforeReissue = await db
+      .select()
+      .from(staffSessions)
+      .where(eq(staffSessions.token, claimed.sessionToken));
+    expect(beforeReissue).toHaveLength(1);
+
+    await createInviteCore(orgA.id, staffA.id); // re-issue
+
+    const afterReissue = await db
+      .select()
+      .from(staffSessions)
+      .where(eq(staffSessions.token, claimed.sessionToken));
+    expect(afterReissue).toHaveLength(0);
+
+    await db.delete(staffInvites).where(eq(staffInvites.staffId, staffA.id));
+  });
+
+  it("updateStaffAvailabilityCore never mutates another org's staff row when passed a mismatched staffId", async () => {
+    const before = await getStaff(orgB.id, staffB.id);
+    const result = await updateStaffAvailabilityCore(orgA.id, staffB.id, {
+      fixedDaysOff: [1, 2, 3],
+      unavailableShiftTypeIds: [],
+    });
+    expect(result.error).toBeNull(); // no-op, not an error — matches deactivateStaffCore's existing behavior
+
+    const after = await getStaff(orgB.id, staffB.id);
+    expect(after).toEqual(before);
+  });
+
+  it("requestOwnTimeOff (staff self-service) refuses to clear a confirmed shift, unlike the manager proxy path", async () => {
+    // staffA/shiftTypeA/2026-06-01 was confirmed by the beforeAll seed above.
+    const result = await requestOwnTimeOff(orgA.id, staffA.id, "2026-06-01");
+    expect(result.error).toBe(
+      "この日はすでに確定したシフトがあります。交代の申請、または管理者にご相談ください。",
+    );
+
+    const stillAssigned = await getAssignmentsForDate(orgA.id, "2026-06-01");
+    expect(stillAssigned.some((a) => a.staffId === staffA.id)).toBe(true);
+  });
+
+  it("requestOwnTimeOff never writes into another org when passed a mismatched staffId", async () => {
+    const result = await requestOwnTimeOff(orgA.id, staffB.id, "2026-06-25");
+    expect(result.error).toBe("スタッフが見つかりません");
+
+    const orgBTimeOff = await listTimeOffForRange(orgB.id, "2026-06-25", "2026-06-26");
+    expect(orgBTimeOff).toHaveLength(0);
+  });
+});
+
+describe("recordActualShiftTimeCore isolation (staff self-service clock-in/out)", () => {
+  const ACTUAL_TIME_DATE = "2026-06-26";
+
+  it("records the actual time onto the caller's own org's confirmed shift", async () => {
+    const assign = await setShiftAssignment(orgA.id, null, staffA.id, ACTUAL_TIME_DATE, shiftTypeA.id);
+    expect(assign.error).toBeNull();
+
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, ACTUAL_TIME_DATE, "07:10", "15:45");
+    expect(result.error).toBeNull();
+
+    const [row] = await getAssignmentsForDate(orgA.id, ACTUAL_TIME_DATE);
+    expect(row).toMatchObject({ actualStartTime: "07:10", actualEndTime: "15:45" });
+  });
+
+  it("refuses when there is no confirmed shift for that staff+date", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, "2026-06-27", "07:00", "16:00");
+    expect(result.error).toBe("この日に確定したシフトが見つかりません");
+  });
+
+  it("rejects a malformed time instead of writing a bad value", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffA.id, ACTUAL_TIME_DATE, "25:99", "16:00");
+    expect(result.error).toBe("時刻の形式が正しくありません");
+  });
+
+  it("never writes into another org when passed a mismatched staffId", async () => {
+    const result = await recordActualShiftTimeCore(orgA.id, staffB.id, ACTUAL_TIME_DATE, "07:00", "16:00");
+    expect(result.error).toBe("この日に確定したシフトが見つかりません");
+
+    const orgBRows = await getAssignmentsForDate(orgB.id, ACTUAL_TIME_DATE);
+    expect(orgBRows.every((r) => r.actualStartTime === null)).toBe(true);
   });
 });

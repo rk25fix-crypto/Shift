@@ -39,6 +39,13 @@ export function formatDateJapanese(date: string): string {
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${JP_WEEKDAYS[d.getUTCDay()]})`;
 }
 
+/** Day-of-month and Japanese weekday label for a date strip/calendar cell (components/shift/DateStrip.tsx, components/staff/TimeOffCalendar.tsx). */
+export function dayAndWeekday(date: string): { day: number; weekday: number; weekdayLabel: string } {
+  const d = new Date(`${date}T00:00:00Z`);
+  const weekday = d.getUTCDay();
+  return { day: d.getUTCDate(), weekday, weekdayLabel: JP_WEEKDAYS[weekday] };
+}
+
 /** YYYY-MM for the given date, defaulting to today. */
 export function monthOf(date: string): string {
   return date.slice(0, 7);
@@ -80,5 +87,12 @@ export function datesInMonth(yearMonth: string): string[] {
 export function nextMonth(yearMonth: string): string {
   const [year, month] = yearMonth.split("-").map(Number);
   const d = new Date(Date.UTC(year, month, 1)); // month is 1-based here, so this rolls forward one month
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** The YYYY-MM immediately before the given one (app/(app)/settings/reports/page.tsx's month nav). */
+export function prevMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 2, 1)); // month is 1-based; -2 rolls back one month
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }

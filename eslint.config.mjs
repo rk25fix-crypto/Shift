@@ -30,12 +30,18 @@ const eslintConfig = defineConfig([
     files: [
       "lib/db/scopedClient.ts",
       "lib/auth/config.ts",
-      "lib/auth/actions.ts",
+      "lib/auth/provision.ts",
       "lib/org/current.ts",
       "lib/org/actions.ts",
       "lib/db/scopedClient.isolation.d1.test.ts",
       "app/api/stripe/webhook/route.ts",
       "lib/admin/**/*.ts",
+      // Staff invite-claim and staff-session lookup have no organizationId to
+      // scope by until the token/cookie itself resolves one — same bootstrap
+      // case as lib/org/current.ts's getCurrentMembership().
+      "lib/staff-invites/write.ts",
+      "lib/staff-invites/queries.ts",
+      "lib/staff-auth/session.ts",
     ],
     rules: {
       "no-restricted-imports": "off",
@@ -55,6 +61,11 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     "dist/**",
     "worker-configuration.d.ts",
+    // Claude Code worktrees are scratch checkouts managed by the harness, not project source.
+    ".claude/worktrees/**",
+    // Vendored Claude Design prototype bundle — reference material, not app source.
+    "docs/**/*.dc.html",
+    "docs/**/support.js",
   ]),
 ]);
 

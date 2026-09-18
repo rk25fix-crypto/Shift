@@ -40,7 +40,7 @@ export function OtpForm({ redirectTo, submitLabel }: OtpFormProps) {
       const { error } = await verifyOtp(email, code);
       if (error) setError(error);
       // replace, not push: /login must not stay in history so Back can't
-      // restore the cached pre-login "email" step (see SignupForm's
+      // restore the cached pre-login "email" step (see OnboardingWizard's
       // equivalent for /signup's fuller rationale).
       else router.replace(redirectTo);
     });

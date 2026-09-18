@@ -75,22 +75,22 @@ export default async function WeekPage({
         <Link
           href={`/week?start=${addDays(monday, -7)}`}
           aria-label="前の週"
-          className="p-2 text-xl text-gray-500"
+          className="p-2 text-xl text-ink-weak"
         >
           ‹
         </Link>
         <div className="flex flex-col items-center">
-          <h1 className="text-lg font-bold">
+          <h1 className="text-lg font-bold font-heading text-ink">
             {dates[0].slice(5).replace("-", "/")}〜{dates[6].slice(5).replace("-", "/")}
           </h1>
-          <Link href="/week" className="text-xs text-indigo-600">
+          <Link href="/week" className="text-xs text-primary-ink">
             今週へ
           </Link>
         </div>
         <Link
           href={`/week?start=${addDays(monday, 7)}`}
           aria-label="次の週"
-          className="p-2 text-xl text-gray-500"
+          className="p-2 text-xl text-ink-weak"
         >
           ›
         </Link>
