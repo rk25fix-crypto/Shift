@@ -1,22 +1,13 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { getScopedDb } from "@/lib/db/scopedClient";
 import { isManager, requireCurrentMembership } from "@/lib/org/current";
 import { auth } from "@/lib/auth/config";
-import { shiftAssignments } from "@/drizzle/schema";
+import { setShiftAssignment } from "@/lib/shifts/assign";
+import { recordActualShiftTimeCore } from "@/lib/shifts/actual-time";
 
-/**
- * Sets (or clears, when shiftTypeId is null) the one shift a staff member
- * holds on a given date. The schema allows more than one shift per day
- * (shift_assignments' unique key includes shift_type_id — see
- * docs/plan.md), but the Today view keeps to "tap a chip, pick one shift"
- * for Phase 1a, matching lib/shift-generator's one-shift-a-day model. A
- * manager who genuinely needs a second shift that day can add it once the
- * data model's multi-shift support gets a UI (Phase 1b+).
- */
+/** Server Action wrapper around setShiftAssignment() — see lib/shifts/assign.ts for the actual logic. */
 export async function assignShift(
   staffId: string,
   date: string,
@@ -25,36 +16,54 @@ export async function assignShift(
   const { organizationId, role } = await requireCurrentMembership();
   if (!isManager(role)) return { error: "権限がありません" };
 
-  const { db } = getScopedDb(organizationId);
+  const session = await auth.api.getSession({ headers: await headers() });
+  const result = await setShiftAssignment(
+    organizationId,
+    session?.user.id ?? null,
+    staffId,
+    date,
+    shiftTypeId,
+  );
 
-  await db
-    .delete(shiftAssignments)
-    .where(
-      and(
-        eq(shiftAssignments.organizationId, organizationId),
-        eq(shiftAssignments.staffId, staffId),
-        eq(shiftAssignments.date, date),
-      ),
-    );
-
-  if (shiftTypeId) {
-    const session = await auth.api.getSession({ headers: await headers() });
-
-    try {
-      await db.insert(shiftAssignments).values({
-        organizationId,
-        staffId,
-        shiftTypeId,
-        date,
-        status: "confirmed",
-        createdBy: session?.user.id ?? null,
-      });
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : "保存に失敗しました" };
-    }
+  if (!result.error) {
+    revalidatePath("/today");
+    revalidatePath("/week");
+    revalidatePath(`/staff/${staffId}`);
   }
 
-  revalidatePath("/today");
-  revalidatePath(`/staff/${staffId}`);
-  return { error: null };
+  return result;
+}
+
+/**
+ * Manager correcting a staff member's actual clock-in/out for a past or
+ * present day — same core as lib/staff-auth/actions.ts's
+ * recordOwnActualShiftTime, but staffId is manager-supplied (not
+ * session-derived) since this edits someone else's record.
+ */
+export async function recordActualShiftTimeAsManager(
+  staffId: string,
+  date: string,
+  actualStartTime: string,
+  actualEndTime: string,
+): Promise<{ error: string | null }> {
+  const { organizationId, role } = await requireCurrentMembership();
+  if (!isManager(role)) return { error: "権限がありません" };
+
+  const session = await auth.api.getSession({ headers: await headers() });
+  const result = await recordActualShiftTimeCore(
+    organizationId,
+    staffId,
+    date,
+    actualStartTime,
+    actualEndTime,
+    session?.user.id ?? null,
+  );
+
+  if (!result.error) {
+    revalidatePath(`/staff/${staffId}`);
+    revalidatePath("/settings/reports");
+    revalidatePath("/today");
+  }
+
+  return result;
 }

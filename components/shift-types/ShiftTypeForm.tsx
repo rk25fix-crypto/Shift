@@ -19,6 +19,7 @@ const DEFAULT_INPUT: ShiftTypeInput = {
   breakMinutes: 60,
   isRequired: true,
   isBalanced: true,
+  requiredCount: 1,
   colorKey: null,
   sortOrder: 0,
 };
@@ -35,6 +36,7 @@ export function ShiftTypeForm({ existing }: ShiftTypeFormProps) {
           breakMinutes: existing.breakMinutes,
           isRequired: existing.isRequired,
           isBalanced: existing.isBalanced,
+          requiredCount: existing.requiredCount,
           colorKey: existing.colorKey,
           sortOrder: existing.sortOrder,
         }
@@ -135,6 +137,20 @@ export function ShiftTypeForm({ existing }: ShiftTypeFormProps) {
         />
         毎日必須のシフト(未充足なら警告する)
       </label>
+
+      {input.isRequired && (
+        <label className="flex flex-col gap-1 text-sm">
+          必要人数(例: 早番3人なら3)
+          <input
+            type="number"
+            min={1}
+            required
+            value={input.requiredCount}
+            onChange={(e) => setInput({ ...input, requiredCount: Number(e.target.value) })}
+            className="w-24 rounded-lg border border-gray-300 px-4 py-3 text-base"
+          />
+        </label>
+      )}
 
       <label className="flex items-center gap-2 text-sm">
         <input

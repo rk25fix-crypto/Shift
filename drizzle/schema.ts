@@ -117,6 +117,10 @@ export const shiftTypes = sqliteTable(
     breakMinutes: integer("break_minutes").notNull().default(0),
     isRequired: integer("is_required", { mode: "boolean" }).notNull().default(false),
     isBalanced: integer("is_balanced", { mode: "boolean" }).notNull().default(false),
+    // How many staff must fill this shift type per day (e.g. 早番3人).
+    // Only meaningful when isRequired — the generator (lib/shift-generator)
+    // reads it to assign more than one person per required shift type.
+    requiredCount: integer("required_count").notNull().default(1),
     colorKey: text("color_key"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
@@ -124,6 +128,7 @@ export const shiftTypes = sqliteTable(
   (table) => [
     unique("shift_types_org_code_unique").on(table.organizationId, table.code),
     index("shift_types_org_idx").on(table.organizationId),
+    check("shift_types_required_count_check", sql`${table.requiredCount} >= 1`),
   ],
 );
 
@@ -146,6 +151,14 @@ export const shiftAssignments = sqliteTable(
     // auto-generate writes 'draft' rows for the manager to review before
     // 'confirmed' publishes them (docs/plan.md).
     status: text("status").notNull().default("confirmed").$type<"draft" | "confirmed">(),
+    // Staff-recorded clock-in/out ("HH:MM"), set once at day's end
+    // (app/staff-home/page.tsx's ActualTimeRecorder) — null until then, and
+    // may never differ from the shift type's own scheduled start/end. Hours
+    // and payroll calculations (lib/shifts/worked-shift.ts) prefer these
+    // over the shift type's times whenever both are present, since the
+    // schedule is a plan and this is what actually happened.
+    actualStartTime: text("actual_start_time"), // "HH:MM"
+    actualEndTime: text("actual_end_time"), // "HH:MM"
     createdBy: text("created_by"), // Better Auth user.id
     updatedAt: integer("updated_at", { mode: "timestamp" })
       .notNull()
@@ -199,8 +212,18 @@ export const swapRequests = sqliteTable(
     toStaffId: text("to_staff_id")
       .notNull()
       .references(() => staff.id),
-    fromShiftTypeId: text("from_shift_type_id").references(() => shiftTypes.id),
-    toShiftTypeId: text("to_shift_type_id").references(() => shiftTypes.id),
+    // SET NULL (not the default RESTRICT): a swap request referencing a
+    // shift type is not "in use" the way a live shift_assignments row is
+    // (that FK stays RESTRICT — see lib/shift-types/write.ts). Without this,
+    // any shift type ever named in any swap request — pending, approved, or
+    // long since rejected — could never be deleted again. Deletion while a
+    // *pending* request still references the type is blocked at the
+    // application layer instead (deleteShiftTypeCore), since by the time
+    // this FK fires it's too late to give a useful error.
+    fromShiftTypeId: text("from_shift_type_id").references(() => shiftTypes.id, {
+      onDelete: "set null",
+    }),
+    toShiftTypeId: text("to_shift_type_id").references(() => shiftTypes.id, { onDelete: "set null" }),
     status: text("status").notNull().default("pending").$type<"pending" | "approved" | "rejected">(),
     requestedBy: text("requested_by"), // Better Auth user.id
     decidedBy: text("decided_by"),
@@ -243,11 +266,65 @@ export const auditLog = sqliteTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     actorId: text("actor_id"), // Better Auth user.id
-    action: text("action").notNull(),
-    entity: text("entity").notNull(),
+    action: text("action").notNull().$type<"create" | "update" | "delete">(),
+    entity: text("entity").notNull().$type<"staff" | "shift_type" | "shift_assignment">(),
     entityId: text("entity_id"),
     diff: text("diff", { mode: "json" }).$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
-  (table) => [index("audit_log_org_created_idx").on(table.organizationId, table.createdAt)],
+  (table) => [
+    index("audit_log_org_created_idx").on(table.organizationId, table.createdAt),
+    check("audit_log_action_check", sql`${table.action} in ('create', 'update', 'delete')`),
+    check(
+      "audit_log_entity_check",
+      sql`${table.entity} in ('staff', 'shift_type', 'shift_assignment')`,
+    ),
+  ],
+);
+
+// Staff self-service login (docs/plan.md Phase 3) is a link-only session, not
+// a Better Auth account — no password/OTP (design_handoff_shift_bright_flow/
+// README.md 2i「招待リンク先」). staffInvites is the one-time link an admin
+// hands a staff member; claiming it (lib/staff-invites/actions.ts) issues a
+// longer-lived staffSessions row instead of reusing the invite token itself,
+// so a leaked/bookmarked invite link can't be replayed after it's claimed.
+export const staffInvites = sqliteTable(
+  "staff_invites",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    claimedAt: integer("claimed_at", { mode: "timestamp" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_invites_token_unique").on(table.token),
+    index("staff_invites_staff_idx").on(table.staffId),
+  ],
+);
+
+export const staffSessions = sqliteTable(
+  "staff_sessions",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("staff_sessions_token_unique").on(table.token),
+    index("staff_sessions_staff_idx").on(table.staffId),
+  ],
 );

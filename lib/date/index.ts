@@ -21,6 +21,13 @@ export function todayInTimezone(timezone: string = DEFAULT_TIMEZONE): string {
   }).format(new Date());
 }
 
+/** True for a real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
+export function isValidIsoDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const d = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date;
+}
+
 export function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -32,9 +39,38 @@ export function formatDateJapanese(date: string): string {
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${JP_WEEKDAYS[d.getUTCDay()]})`;
 }
 
+/** Day-of-month and Japanese weekday label for a date strip/calendar cell (components/shift/DateStrip.tsx, components/staff/TimeOffCalendar.tsx). */
+export function dayAndWeekday(date: string): { day: number; weekday: number; weekdayLabel: string } {
+  const d = new Date(`${date}T00:00:00Z`);
+  const weekday = d.getUTCDay();
+  return { day: d.getUTCDate(), weekday, weekdayLabel: JP_WEEKDAYS[weekday] };
+}
+
 /** YYYY-MM for the given date, defaulting to today. */
 export function monthOf(date: string): string {
   return date.slice(0, 7);
+}
+
+/** The Monday (YYYY-MM-DD) starting the ISO week (Mon-Sun) containing `date`. */
+export function mondayOf(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const daysSinceMonday = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - daysSinceMonday);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The 7 ISO dates (YYYY-MM-DD) of the week starting on `monday`, in order. */
+export function datesInWeek(monday: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+
+/** All ISO dates (YYYY-MM-DD) in `[startDate, endDateExclusive)`, in order. */
+export function datesInRange(startDate: string, endDateExclusive: string): string[] {
+  const dates: string[] = [];
+  for (let d = startDate; d < endDateExclusive; d = addDays(d, 1)) {
+    dates.push(d);
+  }
+  return dates;
 }
 
 /** All ISO dates (YYYY-MM-DD) in the given YYYY-MM month, in order. */
@@ -51,5 +87,12 @@ export function datesInMonth(yearMonth: string): string[] {
 export function nextMonth(yearMonth: string): string {
   const [year, month] = yearMonth.split("-").map(Number);
   const d = new Date(Date.UTC(year, month, 1)); // month is 1-based here, so this rolls forward one month
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** The YYYY-MM immediately before the given one (app/(app)/settings/reports/page.tsx's month nav). */
+export function prevMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 2, 1)); // month is 1-based; -2 rolls back one month
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }

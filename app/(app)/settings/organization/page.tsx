@@ -1,24 +1,44 @@
 import Link from "next/link";
+import { BarChart3, CreditCard, History, Repeat, Tag } from "lucide-react";
+import { isManager, listMembershipsForCurrentUser, requireCurrentMembership } from "@/lib/org/current";
+import { PrintLinkForm } from "@/components/shift/PrintLinkForm";
+import { OrgSwitcher } from "@/components/settings/OrgSwitcher";
 
-export default function OrganizationSettingsPage() {
+export default async function OrganizationSettingsPage() {
+  const { organizationId, role } = await requireCurrentMembership();
+  const allMemberships = await listMembershipsForCurrentUser();
+
+  const links = [
+    isManager(role) && { href: "/settings/reports", label: "稼働レポート", icon: BarChart3 },
+    { href: "/swaps", label: "交代の申請・一覧", icon: Repeat },
+    { href: "/settings/shift-types", label: "シフト種別の設定", icon: Tag },
+    isManager(role) && { href: "/settings/audit-log", label: "変更履歴", icon: History },
+    { href: "/billing", label: "お支払い・プラン", icon: CreditCard },
+  ].filter((link): link is { href: string; label: string; icon: typeof BarChart3 } => Boolean(link));
+
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 py-6">
       <h1 className="text-xl font-bold">設定</h1>
-      <ul className="flex flex-col gap-2 text-sm">
-        <li>
-          <Link href="/settings/shift-types" className="text-indigo-600">
-            シフト種別の設定
-          </Link>
-        </li>
-        <li>
-          <Link href="/billing" className="text-indigo-600">
-            お支払い・プラン
-          </Link>
-        </li>
+      {allMemberships.length > 1 && (
+        <OrgSwitcher memberships={allMemberships} currentOrgId={organizationId} />
+      )}
+      <ul className="flex flex-col gap-2">
+        {links.map(({ href, label, icon: Icon }) => (
+          <li key={href}>
+            <Link
+              href={href}
+              className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 text-sm font-bold text-ink"
+            >
+              <Icon size={20} color="var(--color-primary)" />
+              {label}
+            </Link>
+          </li>
+        ))}
       </ul>
-      <p className="text-sm text-gray-500">
-        Phase 1a で事業所名・タイムゾーン、Phase 1b で勤務ルール(連勤上限・週/月上限時間)の設定を実装します。
-      </p>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">シフト表の印刷</p>
+        <PrintLinkForm organizationId={organizationId} />
+      </div>
     </div>
   );
 }

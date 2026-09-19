@@ -43,6 +43,8 @@ Workers Builds プロジェクトの「設定」→「変数とシークレッ�
 
 D1データベース(`DB`バインディング)は `wrangler.jsonc` に既に定義済みで、シークレットではなくバインディングとして自動的に渡されるため、ここでの設定は不要です。
 
+**`ENABLE_TEST_UTILS` は本番Workerに絶対に追加しないこと。** E2Eテスト専用のフラグで、有効にするとサインインOTPの実メール送信が止まり、`GET /api/test/otp` から誰でもOTPを読み出せるようになります(`lib/auth/config.ts`)。
+
 ## 3. 動作確認
 
 1. Workers Buildsのデプロイ完了後に発行されるURL(`https://<worker-name>.<account>.workers.dev`)を開く
@@ -61,4 +63,4 @@ npm run build
 npm run start
 ```
 
-`npm run dev`(`vinext dev`)はライブリロード付きのローカル開発用です。CI(`.github/workflows/ci.yml`)のE2Eテストは `npm run build && npm run start`(`wrangler dev` でビルド済みWorkerを動かす方式)を使っています — `vinext dev` はCIランナー上で起動が固まる問題が確認されているためです(詳細はgitログの該当コミット参照)。
+`npm run dev`(`vinext dev`)はライブリロード付きのローカル開発用です。CI(`.github/workflows/ci.yml`)のE2Eテストは `npm run e2e:server`(ビルド→ローカルD1マイグレーション→`wrangler dev` でビルド済みWorkerを動かす方式)を使っています — `vinext dev` はCIランナー上で起動が固まる問題が確認されているためです(詳細はgitログの該当コミット参照)。ログインを伴うE2Eをローカルで動かす手順は README.md の「E2Eでログインが絡むテストを書く/動かす」を参照してください。

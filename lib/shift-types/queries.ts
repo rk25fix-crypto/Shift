@@ -12,6 +12,7 @@ export interface ShiftTypeRecord {
   breakMinutes: number;
   isRequired: boolean;
   isBalanced: boolean;
+  requiredCount: number;
   colorKey: string | null;
   sortOrder: number;
 }
@@ -54,6 +55,7 @@ function toShiftTypeRecord(row: ShiftTypeRow): ShiftTypeRecord {
     breakMinutes: row.breakMinutes,
     isRequired: row.isRequired,
     isBalanced: row.isBalanced,
+    requiredCount: row.requiredCount,
     colorKey: row.colorKey,
     sortOrder: row.sortOrder,
   };
