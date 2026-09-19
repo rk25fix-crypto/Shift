@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireCurrentMembership } from "@/lib/org/current";
+import { isManager, requireCurrentMembership } from "@/lib/org/current";
 import { getStaff, getStaffHourlyWage } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForStaffMonth } from "@/lib/shifts/queries";
@@ -76,7 +76,12 @@ export default async function StaffDetailPage({
 
       <section className="flex flex-col gap-2 py-6">
         <h2 className="px-4 text-sm font-semibold text-gray-500">今月のシフト</h2>
-        <StaffMonthShifts assignments={monthAssignments} shiftTypes={shiftTypes} />
+        <StaffMonthShifts
+          staffId={staff.id}
+          assignments={monthAssignments}
+          shiftTypes={shiftTypes}
+          canManage={isManager(role)}
+        />
       </section>
 
       <h2 className="px-4 pb-2 text-sm font-semibold text-gray-500">編集</h2>
