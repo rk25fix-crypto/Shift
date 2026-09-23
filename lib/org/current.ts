@@ -1,5 +1,5 @@
 import { cookies, headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { auth } from "@/lib/auth/config";
 import { getRawDb } from "@/lib/db/raw";
 import { memberships, organizations } from "@/drizzle/schema";
@@ -56,7 +56,8 @@ export async function getCurrentMembership(): Promise<CurrentMembership | null> 
   const rows = await db
     .select({ organizationId: memberships.organizationId, role: memberships.role })
     .from(memberships)
-    .where(eq(memberships.userId, session.user.id))
+    .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+    .where(and(eq(memberships.userId, session.user.id), isNull(organizations.deletedAt)))
     .orderBy(memberships.createdAt);
 
   const preferredOrgId = (await cookies()).get(CURRENT_ORG_COOKIE)?.value;
@@ -77,7 +78,7 @@ export async function listMembershipsForCurrentUser(): Promise<OrgMembershipOpti
     })
     .from(memberships)
     .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
-    .where(eq(memberships.userId, session.user.id))
+    .where(and(eq(memberships.userId, session.user.id), isNull(organizations.deletedAt)))
     .orderBy(memberships.createdAt);
 }
 

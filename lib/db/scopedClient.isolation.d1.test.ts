@@ -1,9 +1,10 @@
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, isNull, lt } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getRawDb } from "@/lib/db/raw";
 import { getScopedDb } from "@/lib/db/scopedClient";
 import {
   auditLog,
+  memberships,
   organizations,
   staff,
   staffCompensation,
@@ -39,6 +40,7 @@ import { getInvitePreview } from "@/lib/staff-invites/queries";
 import { getOwnHourlyWage } from "@/lib/staff/queries";
 import { updateStaffAvailabilityCore } from "@/lib/staff/write";
 import { requestOwnTimeOff } from "@/lib/time-off/set";
+import { deleteOrganizationCore } from "@/lib/org/write";
 
 /**
  * The real backstop for tenant isolation now that D1 has no Row-Level
@@ -1478,5 +1480,47 @@ describe("recordActualShiftTimeCore isolation (staff self-service clock-in/out)"
 
     const orgBRows = await getAssignmentsForDate(orgB.id, ACTUAL_TIME_DATE);
     expect(orgBRows.every((r) => r.actualStartTime === null)).toBe(true);
+  });
+});
+
+describe("organization soft-delete isolation (lib/org/write.ts)", () => {
+  it("deleteOrganizationCore only marks the caller's own org deleted", async () => {
+    const result = await deleteOrganizationCore(orgA.id);
+    expect(result.error).toBeNull();
+
+    const [rowA] = await getRawDb().select().from(organizations).where(eq(organizations.id, orgA.id));
+    expect(rowA.deletedAt).not.toBeNull();
+
+    const [rowB] = await getRawDb().select().from(organizations).where(eq(organizations.id, orgB.id));
+    expect(rowB.deletedAt).toBeNull();
+
+    // Restore for every test after this one in the file.
+    await getRawDb().update(organizations).set({ deletedAt: null }).where(eq(organizations.id, orgA.id));
+  });
+
+  it("a soft-deleted org's membership rows are excluded from the current-membership lookup query", async () => {
+    // Mirrors lib/org/current.ts's getCurrentMembership()/listMembershipsForCurrentUser()
+    // filter directly, since those two also require a Better Auth session
+    // (next/headers) that this D1-only suite has no way to fake.
+    const userId = crypto.randomUUID();
+    const db = getRawDb();
+    await db.insert(memberships).values([
+      { organizationId: orgA.id, userId, role: "owner" },
+      { organizationId: orgB.id, userId, role: "owner" },
+    ]);
+
+    await deleteOrganizationCore(orgA.id);
+    try {
+      const rows = await db
+        .select({ organizationId: memberships.organizationId })
+        .from(memberships)
+        .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+        .where(and(eq(memberships.userId, userId), isNull(organizations.deletedAt)));
+      expect(rows.map((r) => r.organizationId)).not.toContain(orgA.id);
+      expect(rows.map((r) => r.organizationId)).toContain(orgB.id);
+    } finally {
+      await db.update(organizations).set({ deletedAt: null }).where(eq(organizations.id, orgA.id));
+      await db.delete(memberships).where(eq(memberships.userId, userId));
+    }
   });
 });

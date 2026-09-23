@@ -43,6 +43,13 @@
       "when": 1789665912241,
       "tag": "0005_cynical_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790128854694,
+      "tag": "0006_nice_dorian_gray",
+      "breakpoints": true
     }
   ]
 }
