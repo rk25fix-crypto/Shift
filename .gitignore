@@ -44,3 +44,6 @@ next-env.d.ts
 
 .vinext/
 .wrangler/
+
+# wrangler local secrets
+.dev.vars*
