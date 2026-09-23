@@ -1,12 +1,13 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/config";
 import { getRawDb } from "@/lib/db/raw";
 import { memberships } from "@/drizzle/schema";
-import { setCurrentOrgCookie } from "@/lib/org/current";
+import { CURRENT_ORG_COOKIE, requireCurrentMembership, setCurrentOrgCookie } from "@/lib/org/current";
+import { deleteOrganizationCore } from "@/lib/org/write";
 
 /**
  * Sets which of the logged-in user's organizations is "current" (see
@@ -35,4 +36,20 @@ export async function switchOrganization(organizationId: string): Promise<{ erro
 
   revalidatePath("/", "layout");
   return { error: null };
+}
+
+/**
+ * Soft-deletes the current organization (lib/org/write.ts's
+ * deleteOrganizationCore) — owner-only, the strongest role, since this
+ * affects everyone in the org at once. Clears the current-org cookie so the
+ * next request re-picks (getCurrentMembership() would just skip the
+ * now-deleted org anyway, but a stale cookie naming it is pointless to keep).
+ */
+export async function deleteOrganization(): Promise<{ error: string | null }> {
+  const { organizationId, role } = await requireCurrentMembership();
+  if (role !== "owner") return { error: "権限がありません" };
+
+  const result = await deleteOrganizationCore(organizationId);
+  if (!result.error) (await cookies()).delete(CURRENT_ORG_COOKIE);
+  return result;
 }

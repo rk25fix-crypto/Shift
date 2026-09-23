@@ -39,6 +39,12 @@ export const organizations = sqliteTable("organizations", {
   minBreakMinutesOverSixHours: integer("min_break_minutes_over_6h").notNull().default(45),
   minBreakMinutesOverEightHours: integer("min_break_minutes_over_8h").notNull().default(60),
   createdAt: createdAt(),
+  // Soft delete (lib/org/write.ts's deleteOrganizationCore): rows are kept,
+  // not erased, so an accidental deletion is recoverable and nothing else
+  // that references organization_id needs a cascade. getCurrentMembership()
+  // and listMembershipsForCurrentUser() both filter this out, which is what
+  // actually makes a deleted org disappear from the app.
+  deletedAt: integer("deleted_at", { mode: "timestamp" }),
 });
 
 export const memberships = sqliteTable(

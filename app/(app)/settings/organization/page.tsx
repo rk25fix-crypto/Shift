@@ -1,12 +1,25 @@
 import Link from "next/link";
 import { BarChart3, CreditCard, History, Repeat, Tag } from "lucide-react";
-import { isManager, listMembershipsForCurrentUser, requireCurrentMembership } from "@/lib/org/current";
+import {
+  isManager,
+  listMembershipsForCurrentUser,
+  requireCurrentMembership,
+  type MembershipRole,
+} from "@/lib/org/current";
 import { PrintLinkForm } from "@/components/shift/PrintLinkForm";
 import { OrgSwitcher } from "@/components/settings/OrgSwitcher";
+import { DeleteOrganizationButton } from "@/components/settings/DeleteOrganizationButton";
+
+const ROLE_LABEL: Record<MembershipRole, string> = {
+  owner: "オーナー",
+  admin: "管理者",
+  staff: "スタッフ",
+};
 
 export default async function OrganizationSettingsPage() {
   const { organizationId, role } = await requireCurrentMembership();
   const allMemberships = await listMembershipsForCurrentUser();
+  const organizationName = allMemberships.find((m) => m.organizationId === organizationId)?.organizationName ?? "";
 
   const links = [
     isManager(role) && { href: "/settings/reports", label: "稼働レポート", icon: BarChart3 },
@@ -18,7 +31,14 @@ export default async function OrganizationSettingsPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 py-6">
-      <h1 className="text-xl font-bold">設定</h1>
+      <div>
+        <h1 className="text-xl font-bold">設定</h1>
+        <p className="mt-1 text-sm text-ink-weak">
+          {organizationName}・
+          <span className="font-bold text-primary-ink">{ROLE_LABEL[role]}</span>
+          として利用中
+        </p>
+      </div>
       {allMemberships.length > 1 && (
         <OrgSwitcher memberships={allMemberships} currentOrgId={organizationId} />
       )}
@@ -39,6 +59,11 @@ export default async function OrganizationSettingsPage() {
         <p className="text-sm font-medium">シフト表の印刷</p>
         <PrintLinkForm organizationId={organizationId} />
       </div>
+      {role === "owner" && (
+        <div className="mt-4 border-t border-border pt-4">
+          <DeleteOrganizationButton organizationName={organizationName} />
+        </div>
+      )}
     </div>
   );
 }
