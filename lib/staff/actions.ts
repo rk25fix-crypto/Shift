@@ -8,9 +8,11 @@ import { createStaffCore, deactivateStaffCore, updateStaffCore, type StaffInput 
 
 export type { StaffInput };
 
-export async function createStaff(input: StaffInput): Promise<{ error: string | null }> {
+export async function createStaff(
+  input: StaffInput,
+): Promise<{ error: string | null; staffId: string | null }> {
   const { organizationId, role } = await requireCurrentMembership();
-  if (!isManager(role)) return { error: "権限がありません" };
+  if (!isManager(role)) return { error: "権限がありません", staffId: null };
 
   const session = await auth.api.getSession({ headers: await headers() });
   const result = await createStaffCore(organizationId, role, input, session?.user.id ?? null);

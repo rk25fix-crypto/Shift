@@ -45,5 +45,5 @@ next-env.d.ts
 .vinext/
 .wrangler/
 
-# wrangler local secrets
+# wrangler local secrets / Cloudflare 開発用シークレット(claude-dev-kit)
 .dev.vars*

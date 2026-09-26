@@ -18,15 +18,15 @@ export default async function SwapsPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 py-6">
-      <h1 className="px-4 text-xl font-bold">交代申請</h1>
+      <h1 className="px-4 text-xl font-bold font-heading text-ink">交代申請</h1>
 
       <section className="flex flex-col gap-3">
-        <h2 className="px-4 text-sm font-medium text-gray-600">新しい交代申請</h2>
+        <h2 className="px-4 text-sm font-bold text-ink-weak">新しい交代申請</h2>
         <SwapRequestForm staff={staff} shiftTypes={shiftTypes} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="px-4 text-sm font-medium text-gray-600">申請一覧</h2>
+        <h2 className="px-4 text-sm font-bold text-ink-weak">申請一覧</h2>
         <SwapRequestList
           requests={requests}
           staffNameById={staffNameById}

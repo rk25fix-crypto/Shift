@@ -3,8 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestOtp, verifyOtp } from "@/lib/auth/actions";
+import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
 import { completeOnboarding } from "@/lib/onboarding/actions";
 import { INDUSTRY_OPTIONS, INDUSTRY_SHIFT_TYPE_PRESETS, type IndustryKey } from "@/lib/shift-types/presets";
+import { ONBOARDING_DRAFT_STORAGE_KEY } from "@/components/onboarding/draftReviewStorage";
 
 type Step = "industry" | "email" | "code" | "shiftTypes" | "staff";
 
@@ -96,15 +98,31 @@ export function OnboardingWizard() {
     if (!industryKey) return;
     setError(null);
     startTransition(async () => {
-      const { error } = await completeOnboarding({
+      const result = await completeOnboarding({
         businessName,
         industryKey,
         disabledShiftTypeCodes: Array.from(disabledCodes),
         staffNames,
       });
-      if (error) {
-        setError(error);
+      if (result.error) {
+        setError(result.error);
         return;
+      }
+      // ステップ3「できあがり」の下書きレビューはここ(/signup)では表示できない:
+      // completeOnboarding()がorganizationを作った時点でCookieが変わり、この
+      // ページのServer Component(SignupGate分岐)がどんなサーバーアクション
+      // 呼び出しの後にも再検証されて「すでにログイン中です」に丸ごと差し
+      // 替わってしまう(cookies().set()はNext.jsのルーターキャッシュ全体を
+      // 無効化するため)。即座に/todayへ遷移しつつ、下書きだけ
+      // sessionStorage経由で引き継ぎ、/today側のOnboardingDraftReviewに
+      // 表示させる。
+      if (result.draft) {
+        try {
+          sessionStorage.setItem(ONBOARDING_DRAFT_STORAGE_KEY, JSON.stringify(result.draft));
+        } catch {
+          // sessionStorage unavailable (private mode 等) — レビュー表示は
+          // 諦める。下書き自体はすでに保存済みで、/todayのFABから確定できる。
+        }
       }
       router.replace("/today");
     });
@@ -182,40 +200,30 @@ export function OnboardingWizard() {
         <form onSubmit={handleVerifyCode} className="flex flex-col gap-4">
           <h2 className="text-center text-xl font-bold font-heading text-ink">認証コード</h2>
           <p className="text-sm text-ink-weak">{email} に届いた6桁のコードを入力してください</p>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            required
-            aria-label="認証コード"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="rounded-lg border-2 px-4 py-3 text-center text-2xl tracking-widest"
-            style={{ borderColor: error ? "var(--color-danger-ink-strong)" : "var(--color-border)" }}
-            placeholder="000000"
-          />
+          <OtpCodeInput value={code} onChange={setCode} hasError={!!error} disabled={isPending} />
           {error && (
             <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
               {error}(古いメールに届いたコードを見ている可能性があります)
             </p>
           )}
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
-            style={{ background: "var(--color-primary)" }}
-          >
-            {isPending ? "確認中..." : "次へ"}
-          </button>
-          {error && (
+          {error ? (
             <button
               type="button"
               disabled={isPending}
               onClick={requestCode}
-              className="text-sm font-bold text-primary-ink"
+              className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+              style={{ background: "var(--color-primary)" }}
             >
-              新しいコードを送りなおす
+              {isPending ? "送信中..." : "新しいコードを送りなおす"}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={isPending || code.length < 6}
+              className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+              style={{ background: "var(--color-primary)" }}
+            >
+              {isPending ? "確認中..." : "次へ"}
             </button>
           )}
         </form>

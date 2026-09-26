@@ -18,13 +18,13 @@ export function StaffMonthShifts({
   canManage: boolean;
 }) {
   if (assignments.length === 0) {
-    return <p className="px-4 text-sm text-gray-500">今月の割当はまだありません。</p>;
+    return <p className="px-4 text-sm text-ink-weak">今月の割当はまだありません。</p>;
   }
 
   const shiftTypeById = new Map(shiftTypes.map((s) => [s.id, s]));
 
   return (
-    <ul className="flex flex-col divide-y divide-gray-100 px-4">
+    <ul className="flex flex-col divide-y divide-border-subtle px-4">
       {assignments.map((assignment) => {
         const shiftType = shiftTypeById.get(assignment.shiftTypeId);
         return (

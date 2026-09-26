@@ -25,9 +25,10 @@ export async function createStaffCore(
   role: MembershipRole,
   input: StaffInput,
   actorUserId: string | null = null,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; staffId: string | null }> {
   const { db } = getScopedDb(organizationId);
 
+  let createdId: string;
   try {
     const [created] = await db
       .insert(staff)
@@ -39,6 +40,7 @@ export async function createStaffCore(
         unavailableShiftTypeIds: input.unavailableShiftTypeIds,
       })
       .returning({ id: staff.id });
+    createdId = created.id;
 
     if (role === "owner" && input.hourlyWage != null) {
       await db.insert(staffCompensation).values({
@@ -52,10 +54,10 @@ export async function createStaffCore(
       name: input.name,
     });
   } catch (err) {
-    return { error: toUserFacingError(err, "保存に失敗しました") };
+    return { error: toUserFacingError(err, "保存に失敗しました"), staffId: null };
   }
 
-  return { error: null };
+  return { error: null, staffId: createdId };
 }
 
 export async function updateStaffCore(

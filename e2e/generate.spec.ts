@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dismissInstallBanner, readTestOtp } from "./fixtures";
+import { dismissInstallBanner, fillOtpCode, otpCodeGroup, readTestOtp } from "./fixtures";
 
 test.describe("auto-generate", () => {
   test("generating, confirming, and discarding a week's drafts through the UI", async ({
@@ -18,9 +18,9 @@ test.describe("auto-generate", () => {
     await page.getByRole("button", { name: /無料で始める/ }).click();
     // Wait for the OTP screen (i.e. requestOtp's server action actually
     // finished) before reading it back — otherwise this can race the send.
-    await expect(page.getByLabel("認証コード")).toBeVisible();
+    await expect(otpCodeGroup(page)).toBeVisible();
     const otp = await readTestOtp(page, email);
-    await page.getByLabel("認証コード").fill(otp);
+    await fillOtpCode(page, otp);
     await page.getByRole("button", { name: "次へ" }).click();
 
     // 勤務の確認 — toggle every preset off ("使う" -> "使わない") so onboarding
