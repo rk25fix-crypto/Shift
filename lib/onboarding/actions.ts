@@ -11,6 +11,7 @@ import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { addDays, datesInWeek, mondayOf, todayInTimezone } from "@/lib/date";
 import { INDUSTRY_OPTIONS, INDUSTRY_SHIFT_TYPE_PRESETS, type IndustryKey } from "@/lib/shift-types/presets";
+import type { OnboardingDraft } from "@/components/onboarding/draftReviewStorage";
 
 export interface OnboardingInput {
   businessName: string;
@@ -20,22 +21,19 @@ export interface OnboardingInput {
   staffNames: string[];
 }
 
-/** The current week's draft, for ステップ3「できあがり」(design_handoff … README「1a」) to show before it's confirmed. */
-export interface OnboardingDraft {
-  dates: string[];
-  staff: { id: string; name: string }[];
-  shiftTypes: { id: string; code: string; name: string }[];
-  assignments: { staffId: string; date: string; shiftTypeId: string }[];
-}
-
 const MAX_STAFF_NAMES = 100;
 
 /**
  * Runs the whole 3-step onboarding wizard's write side in one call once the
- * visitor has verified OTP and reached the final "できあがり" step
+ * visitor has verified OTP and taps the final "◯人でシフトを作る" button
  * (design_handoff_shift_bright_flow/README.md, 1a): creates the organization,
  * the industry's shift types, each named staff member, then a first draft
- * for the current week so the "下書き確認" screen has something to show.
+ * for the current week so /today's OnboardingDraftReview
+ * (components/onboarding/OnboardingDraftReview.tsx) has something to show —
+ * that screen isn't rendered here on /signup itself, since by the time this
+ * resolves the organization already exists and any further request re-renders
+ * this page's SignupGate branch instead (see OnboardingWizard.tsx's
+ * handleFinish for why).
  *
  * Reuses the same *Core functions the regular settings screens call
  * (lib/shift-types/write.ts, lib/staff/write.ts, lib/shifts/generate.ts) so

@@ -52,12 +52,16 @@ export function WeekAutoGenerateFab({
   }
 
   return (
+    // pointer-events-none on the full-width wrapper (only its actual content
+    // opts back in) — otherwise its empty margins sit on top of whatever
+    // else shares this screen region (e.g. InstallPromptBanner's own fixed
+    // banner) and swallow clicks meant for it.
     <div
-      className="fixed inset-x-0 z-10 flex flex-col items-center gap-2"
+      className="pointer-events-none fixed inset-x-0 z-10 flex flex-col items-center gap-2"
       style={{ bottom: "calc(env(safe-area-inset-bottom) + 78px)" }}
     >
       {message && (
-        <p className="rounded-full bg-surface px-3 py-1 text-xs font-bold text-ink-weak shadow-sm">
+        <p className="pointer-events-auto rounded-full bg-surface px-3 py-1 text-xs font-bold text-ink-weak shadow-sm">
           {message}
         </p>
       )}
@@ -65,7 +69,7 @@ export function WeekAutoGenerateFab({
         type="button"
         disabled={isPending}
         onClick={handleClick}
-        className="w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)] disabled:opacity-60"
+        className="pointer-events-auto w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)] disabled:opacity-60"
         style={{ background: "var(--color-primary)" }}
       >
         {isPending ? "組み立てています…" : hasDrafts ? "この週で確定する" : "この週を自動で組む"}

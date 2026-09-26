@@ -4,13 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestOtp, verifyOtp } from "@/lib/auth/actions";
 import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
-import { completeOnboarding, type OnboardingDraft } from "@/lib/onboarding/actions";
-import { confirmDraftShifts } from "@/lib/shifts/generate-actions";
+import { completeOnboarding } from "@/lib/onboarding/actions";
 import { INDUSTRY_OPTIONS, INDUSTRY_SHIFT_TYPE_PRESETS, type IndustryKey } from "@/lib/shift-types/presets";
-import { shiftTypeColor } from "@/lib/shift-types/colors";
-import { addDays, formatDateJapanese } from "@/lib/date";
+import { ONBOARDING_DRAFT_STORAGE_KEY } from "@/components/onboarding/draftReviewStorage";
 
-type Step = "industry" | "email" | "code" | "shiftTypes" | "staff" | "draft" | "done";
+type Step = "industry" | "email" | "code" | "shiftTypes" | "staff";
 
 const PROGRESS_BY_STEP: Record<Step, number> = {
   industry: 8,
@@ -18,8 +16,6 @@ const PROGRESS_BY_STEP: Record<Step, number> = {
   code: 34,
   shiftTypes: 62,
   staff: 88,
-  draft: 96,
-  done: 100,
 };
 
 const STEP_LABEL: Record<Step, string> = {
@@ -28,8 +24,6 @@ const STEP_LABEL: Record<Step, string> = {
   code: "あと3ステップ",
   shiftTypes: "あと2ステップ",
   staff: "あと1ステップ",
-  draft: "あと1ステップ",
-  done: "できました",
 };
 
 /**
@@ -50,7 +44,6 @@ export function OnboardingWizard() {
   const [disabledCodes, setDisabledCodes] = useState<Set<string>>(new Set());
   const [staffNames, setStaffNames] = useState<string[]>([]);
   const [staffInput, setStaffInput] = useState("");
-  const [draft, setDraft] = useState<OnboardingDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -115,27 +108,23 @@ export function OnboardingWizard() {
         setError(result.error);
         return;
       }
+      // ステップ3「できあがり」の下書きレビューはここ(/signup)では表示できない:
+      // completeOnboarding()がorganizationを作った時点でCookieが変わり、この
+      // ページのServer Component(SignupGate分岐)がどんなサーバーアクション
+      // 呼び出しの後にも再検証されて「すでにログイン中です」に丸ごと差し
+      // 替わってしまう(cookies().set()はNext.jsのルーターキャッシュ全体を
+      // 無効化するため)。即座に/todayへ遷移しつつ、下書きだけ
+      // sessionStorage経由で引き継ぎ、/today側のOnboardingDraftReviewに
+      // 表示させる。
       if (result.draft) {
-        setDraft(result.draft);
-        setStep("draft");
-      } else {
-        setStep("done");
+        try {
+          sessionStorage.setItem(ONBOARDING_DRAFT_STORAGE_KEY, JSON.stringify(result.draft));
+        } catch {
+          // sessionStorage unavailable (private mode 等) — レビュー表示は
+          // 諦める。下書き自体はすでに保存済みで、/todayのFABから確定できる。
+        }
       }
-    });
-  }
-
-  function handleConfirmDraft() {
-    if (!draft) return;
-    setError(null);
-    startTransition(async () => {
-      const monday = draft.dates[0];
-      const weekEndExclusive = addDays(draft.dates[draft.dates.length - 1], 1);
-      const result = await confirmDraftShifts(monday, weekEndExclusive);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setStep("done");
+      router.replace("/today");
     });
   }
 
@@ -350,99 +339,6 @@ export function OnboardingWizard() {
             style={{ background: "var(--color-primary)" }}
           >
             {isPending ? "組み立てています…" : `${staffNames.length}人でシフトを作る`}
-          </button>
-        </div>
-      )}
-
-      {step === "draft" && draft && (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-center text-xl font-bold font-heading text-ink">できあがり</h2>
-          <div className="overflow-hidden rounded-[18px] border border-border">
-            <div
-              className="grid items-center gap-y-1 border-b border-border-subtle bg-surface-canvas px-2 py-2 text-center text-[10px] font-bold text-ink-weakest"
-              style={{ gridTemplateColumns: "76px repeat(7, 1fr)" }}
-            >
-              <span className="text-left">スタッフ</span>
-              {draft.dates.map((date) => (
-                <span key={date}>{formatDateJapanese(date).replace(/^\d+月/, "")}</span>
-              ))}
-            </div>
-            <div className="flex flex-col divide-y divide-border-subtle bg-surface">
-              {draft.staff.map((member) => (
-                <div
-                  key={member.id}
-                  className="grid items-center gap-y-1 px-2 py-2"
-                  style={{ gridTemplateColumns: "76px repeat(7, 1fr)" }}
-                >
-                  <span className="truncate pr-1 text-left text-[12px] font-bold text-ink">
-                    {member.name}
-                  </span>
-                  {draft.dates.map((date) => {
-                    const assignment = draft.assignments.find(
-                      (a) => a.staffId === member.id && a.date === date,
-                    );
-                    const shiftTypeIndex = assignment
-                      ? draft.shiftTypes.findIndex((t) => t.id === assignment.shiftTypeId)
-                      : -1;
-                    const shiftType = shiftTypeIndex >= 0 ? draft.shiftTypes[shiftTypeIndex] : undefined;
-                    const color = shiftType ? shiftTypeColor(shiftTypeIndex) : undefined;
-                    return (
-                      <div key={date} className="flex justify-center">
-                        <span
-                          className="flex h-7 w-7 items-center justify-center rounded-[9px] text-[11px] font-bold"
-                          style={
-                            color
-                              ? { background: color.bg, color: color.text }
-                              : { color: "var(--color-ink-weakest)" }
-                          }
-                        >
-                          {shiftType ? shiftType.code : "―"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          <p
-            className="rounded-[16px] border px-4 py-3 text-sm font-bold"
-            style={{
-              borderColor: "var(--color-success-border)",
-              background: "var(--color-success-soft)",
-              color: "var(--color-success-ink)",
-            }}
-          >
-            連勤・休憩のきまりも自動で確認しました
-          </p>
-          {error && (
-            <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
-              {error}
-            </p>
-          )}
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={handleConfirmDraft}
-            className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
-            style={{ background: "var(--color-primary)" }}
-          >
-            {isPending ? "確定しています…" : "これで確定してはじめる"}
-          </button>
-        </div>
-      )}
-
-      {step === "done" && (
-        <div className="flex flex-col items-center gap-4 py-10 text-center">
-          <h2 className="text-xl font-bold font-heading text-ink">できあがりました</h2>
-          <p className="text-sm text-ink-weak">メールの確認はあとで大丈夫です</p>
-          <button
-            type="button"
-            onClick={() => router.replace("/today")}
-            className="rounded-full px-8 py-3 text-base font-bold font-heading text-white"
-            style={{ background: "var(--color-primary)" }}
-          >
-            はじめる
           </button>
         </div>
       )}

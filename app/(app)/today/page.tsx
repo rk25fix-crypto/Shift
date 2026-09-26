@@ -10,6 +10,7 @@ import { DayList } from "@/components/shift/DayList";
 import { DateStrip } from "@/components/shift/DateStrip";
 import { DateJumpForm } from "@/components/shift/DateJumpForm";
 import { WeekAutoGenerateFab } from "@/components/shift/WeekAutoGenerateFab";
+import { OnboardingDraftReview } from "@/components/onboarding/OnboardingDraftReview";
 
 export default async function TodayPage({
   searchParams,
@@ -67,6 +68,7 @@ export default async function TodayPage({
         hasRequiredShiftTypes={requiredShiftTypes.length > 0}
         hasDrafts={hasDrafts}
       />
+      <OnboardingDraftReview />
     </div>
   );
 }
