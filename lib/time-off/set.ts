@@ -3,6 +3,7 @@ import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
 import { auditLogInsertStatement } from "@/lib/audit/write";
 import { isValidIsoDate } from "@/lib/date";
+import { SHIFT_UPDATED_PUSH, scheduleStaffPush } from "@/lib/push/send";
 import { shiftAssignments, staff, timeOffRequests } from "@/drizzle/schema";
 
 /**
@@ -38,6 +39,20 @@ export async function setTimeOffRequest(
     .where(and(eq(staff.organizationId, organizationId), eq(staff.id, staffId)));
   if (!staffRow) return { error: "スタッフが見つかりません" };
 
+  // Only a confirmed shift disappearing is worth telling the staff member
+  // about — clearing a draft (or nothing) isn't a change they ever saw.
+  const [confirmedShift] = await db
+    .select({ id: shiftAssignments.id })
+    .from(shiftAssignments)
+    .where(
+      and(
+        eq(shiftAssignments.organizationId, organizationId),
+        eq(shiftAssignments.staffId, staffId),
+        eq(shiftAssignments.date, date),
+        eq(shiftAssignments.status, "confirmed"),
+      ),
+    );
+
   try {
     await db.batch([
       db
@@ -65,6 +80,7 @@ export async function setTimeOffRequest(
     return { error: toUserFacingError(err, "保存に失敗しました") };
   }
 
+  if (confirmedShift) await scheduleStaffPush(organizationId, [staffId], SHIFT_UPDATED_PUSH);
   return { error: null };
 }
 

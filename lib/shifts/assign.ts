@@ -3,6 +3,7 @@ import { getScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
 import { auditLogInsertStatement } from "@/lib/audit/write";
 import { isValidIsoDate } from "@/lib/date";
+import { SHIFT_UPDATED_PUSH, scheduleStaffPush } from "@/lib/push/send";
 import { shiftAssignments, shiftTypes, staff, timeOffRequests } from "@/drizzle/schema";
 
 /**
@@ -115,5 +116,6 @@ export async function setShiftAssignment(
     return { error: toUserFacingError(err, "保存に失敗しました") };
   }
 
+  await scheduleStaffPush(organizationId, [staffId], SHIFT_UPDATED_PUSH);
   return { error: null };
 }

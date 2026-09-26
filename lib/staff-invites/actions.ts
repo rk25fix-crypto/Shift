@@ -19,5 +19,7 @@ export async function createStaffInvite(
   const origin = h.get("origin") ?? `https://${h.get("host")}`;
 
   revalidatePath(`/staff/${staffId}`);
-  return { url: `${origin}/invite/${token}`, error: null };
+  // openExternalBrowser=1 makes LINE open the link in Safari/Chrome instead of
+  // its in-app browser, which can't add to the Home Screen or receive push.
+  return { url: `${origin}/invite/${token}?openExternalBrowser=1`, error: null };
 }

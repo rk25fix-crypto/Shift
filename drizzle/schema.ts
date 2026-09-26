@@ -305,6 +305,11 @@ export const staffInvites = sqliteTable(
       .notNull()
       .references(() => staff.id, { onDelete: "cascade" }),
     token: text("token").notNull(),
+    // "invite" = 管理者が渡す長い使い切りリンク、"pairing" = ホーム画面アプリへセッションを
+    // 引き継ぐための短い10分コード(lib/staff-invites/write.ts)。
+    kind: text("kind", { enum: ["invite", "pairing"] })
+      .notNull()
+      .default("invite"),
     expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
     claimedAt: integer("claimed_at", { mode: "timestamp" }),
     createdAt: createdAt(),
@@ -332,5 +337,37 @@ export const staffSessions = sqliteTable(
   (table) => [
     unique("staff_sessions_token_unique").on(table.token),
     index("staff_sessions_staff_idx").on(table.staffId),
+  ],
+);
+
+// Web Push subscription of one staff device (lib/push/*). Tied to the
+// staff_sessions row that created it with ON DELETE CASCADE, so anything that
+// revokes a session (deactivateStaffCore, createInviteCore's re-issue) also
+// stops notifications to that device with no extra cleanup code. `endpoint`
+// is unique across the whole table on purpose: a browser profile gets the
+// same endpoint back from pushManager.subscribe(), so if a different staff
+// member (even in another org) subscribes on a shared device, the row is
+// taken over — see lib/push/subscriptions.ts.
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: id(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    staffSessionId: text("staff_session_id")
+      .notNull()
+      .references(() => staffSessions.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    unique("push_subscriptions_endpoint_unique").on(table.endpoint),
+    index("push_subscriptions_staff_idx").on(table.organizationId, table.staffId),
   ],
 );

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentStaffSession } from "@/lib/staff-auth/session";
 import { getStaff, getOwnHourlyWage } from "@/lib/staff/queries";
@@ -10,20 +11,28 @@ import { addDays, formatDateJapanese, monthOf, nextMonth, todayInTimezone } from
 import { TimeOffCalendar } from "@/components/staff/TimeOffCalendar";
 import { AvailabilityEditor } from "@/components/staff/AvailabilityEditor";
 import { ActualTimeRecorder } from "@/components/staff/ActualTimeRecorder";
+import { PushEnableButton } from "@/components/staff/PushEnableButton";
+import { PairingCodeForm, PairingCodeIssuer } from "@/components/staff/PairingCode";
+
+// ホーム画面に追加されたとき、管理者向け(/today)ではなくこの画面から起動させる。
+export const metadata: Metadata = { manifest: "/manifest-staff.json" };
 
 /** スタッフ本人の1画面完結ホーム(design handoff 1c)。管理者向け画面とは別ルート、招待リンクからのみ到達する。 */
 export default async function StaffHomePage() {
   const session = await getCurrentStaffSession();
   if (!session) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
         <p className="text-sm text-ink-weak">
-          セッションが見つかりません。招待リンクをもう一度開くか、管理者にリンクの再発行を依頼してください。
+          ログインが必要です。ホーム画面に追加した後は、ブラウザ側のスタッフ画面の「ホーム画面アプリでログインする」で出るコードを入力してください。
+          コードがない場合は、招待リンクをもう一度開くか、管理者にリンクの再発行を依頼してください。
         </p>
+        <PairingCodeForm />
       </main>
     );
   }
   const { organizationId, staffId } = session;
+  const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? null;
   const today = todayInTimezone();
   const nextMonthStart = `${nextMonth(monthOf(today))}-01`;
 
@@ -92,6 +101,11 @@ export default async function StaffHomePage() {
           />
         </div>
       )}
+
+      <div className="flex flex-col gap-3 px-4">
+        {vapidPublicKey && <PushEnableButton vapidPublicKey={vapidPublicKey} />}
+        <PairingCodeIssuer />
+      </div>
 
       <div className="px-4">
         <p className="mb-2 text-sm font-bold text-ink">休み希望</p>
