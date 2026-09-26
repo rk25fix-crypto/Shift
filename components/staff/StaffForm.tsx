@@ -16,6 +16,13 @@ interface StaffFormProps {
   shiftTypes: ShiftTypeRecord[];
   /** 時給欄はownerにしか表示しない(docs/plan.md 「時給をstaffから分離する理由」)。 */
   canEditCompensation: boolean;
+  /**
+   * Where a successful *creation* (not edit) lands — "list" is the default
+   * /staff, "invite" goes straight to the new staff's own detail page so a
+   * manager coming from the「リンクを送る」空状態ボタン(design handoff 3c)
+   * can issue an invite link immediately without an extra click.
+   */
+  afterCreateRedirect?: "list" | "invite";
 }
 
 export function StaffForm({
@@ -23,6 +30,7 @@ export function StaffForm({
   existingHourlyWage,
   shiftTypes,
   canEditCompensation,
+  afterCreateRedirect = "list",
 }: StaffFormProps) {
   const [name, setName] = useState(existing?.name ?? "");
   const [roleLabel, setRoleLabel] = useState(existing?.roleLabel ?? "");
@@ -62,9 +70,20 @@ export function StaffForm({
     };
 
     startTransition(async () => {
-      const result = existing ? await updateStaff(existing.id, input) : await createStaff(input);
-      if (result.error) setError(result.error);
-      else router.push("/staff");
+      if (existing) {
+        const result = await updateStaff(existing.id, input);
+        if (result.error) setError(result.error);
+        else router.push("/staff");
+        return;
+      }
+      const result = await createStaff(input);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      router.push(
+        afterCreateRedirect === "invite" && result.staffId ? `/staff/${result.staffId}` : "/staff",
+      );
     });
   }
 
@@ -77,7 +96,7 @@ export function StaffForm({
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+          className="rounded-lg border border-border px-4 py-3 text-base"
         />
       </label>
 
@@ -87,7 +106,7 @@ export function StaffForm({
           type="text"
           value={roleLabel}
           onChange={(e) => setRoleLabel(e.target.value)}
-          className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+          className="rounded-lg border border-border px-4 py-3 text-base"
         />
       </label>
 
@@ -100,11 +119,14 @@ export function StaffForm({
               type="button"
               onClick={() => toggleDayOff(day)}
               className={clsx(
-                "h-11 w-11 rounded-full border text-sm font-medium",
-                fixedDaysOff.includes(day)
-                  ? "border-indigo-600 bg-indigo-600 text-white"
-                  : "border-gray-300 text-gray-700",
+                "h-11 w-11 rounded-full border text-sm font-bold",
+                fixedDaysOff.includes(day) ? "text-white" : "border-border text-ink-weak",
               )}
+              style={
+                fixedDaysOff.includes(day)
+                  ? { background: "var(--color-primary)", borderColor: "var(--color-primary)" }
+                  : undefined
+              }
             >
               {label}
             </button>
@@ -121,12 +143,16 @@ export function StaffForm({
                 key={shiftType.id}
                 type="button"
                 onClick={() => toggleUnavailableShiftType(shiftType.id)}
-                className={clsx(
-                  "rounded-full border px-4 py-2 text-sm font-medium",
+                className="rounded-full border px-4 py-2 text-sm font-bold"
+                style={
                   unavailableShiftTypeIds.includes(shiftType.id)
-                    ? "border-red-500 bg-red-50 text-red-700"
-                    : "border-gray-300 text-gray-700",
-                )}
+                    ? {
+                        borderColor: "var(--color-danger-border)",
+                        background: "var(--color-danger-soft)",
+                        color: "var(--color-danger-ink)",
+                      }
+                    : { borderColor: "var(--color-border)", color: "var(--color-ink-weak)" }
+                }
               >
                 {shiftType.code}
               </button>
@@ -143,17 +169,22 @@ export function StaffForm({
             min={0}
             value={hourlyWage}
             onChange={(e) => setHourlyWage(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
           />
         </label>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"
         disabled={isPending}
-        className="rounded-full bg-indigo-600 px-6 py-3 text-base font-medium text-white disabled:opacity-50"
+        className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+        style={{ background: "var(--color-primary)" }}
       >
         {isPending ? "保存中..." : existing ? "更新する" : "追加する"}
       </button>

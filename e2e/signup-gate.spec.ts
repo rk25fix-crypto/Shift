@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dismissInstallBanner, readTestOtp, signUpNewOrg } from "./fixtures";
+import { dismissInstallBanner, fillOtpCode, otpCodeGroup, readTestOtp, signUpNewOrg } from "./fixtures";
 
 /**
  * Covers app/(auth)/signup/page.tsx's SignupGate: an already-logged-in
@@ -46,9 +46,9 @@ test.describe("signup revisit guard", () => {
     await page.getByLabel("メールアドレス").fill(email);
     await page.getByRole("button", { name: /無料で始める/ }).click();
 
-    await expect(page.getByLabel("認証コード")).toBeVisible();
+    await expect(otpCodeGroup(page)).toBeVisible();
     const otp = await readTestOtp(page, email);
-    await page.getByLabel("認証コード").fill(otp);
+    await fillOtpCode(page, otp);
     await page.getByRole("button", { name: "次へ" }).click();
 
     // 勤務の確認 → 名前だけ入力(0人のまま)。

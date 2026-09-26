@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestOtp, verifyOtp } from "@/lib/auth/actions";
+import { OtpCodeInput } from "@/components/auth/OtpCodeInput";
 
 interface OtpFormProps {
   /** Where to send the user after a successful login. */
@@ -23,14 +24,18 @@ export function OtpForm({ redirectTo, submitLabel }: OtpFormProps) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  function handleRequestCode(e: React.FormEvent) {
-    e.preventDefault();
+  function requestCode() {
     setError(null);
     startTransition(async () => {
       const { error } = await requestOtp(email);
       if (error) setError(error);
       else setStep("code");
     });
+  }
+
+  function handleRequestCode(e: React.FormEvent) {
+    e.preventDefault();
+    requestCode();
   }
 
   function handleVerifyCode(e: React.FormEvent) {
@@ -49,7 +54,7 @@ export function OtpForm({ redirectTo, submitLabel }: OtpFormProps) {
   if (step === "email") {
     return (
       <form onSubmit={handleRequestCode} className="flex w-full max-w-xs flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-sm text-ink">
           メールアドレス
           <input
             type="email"
@@ -57,15 +62,20 @@ export function OtpForm({ redirectTo, submitLabel }: OtpFormProps) {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
             placeholder="you@example.com"
           />
         </label>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+            {error}
+          </p>
+        )}
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-full bg-indigo-600 px-6 py-3 text-base font-medium text-white disabled:opacity-50"
+          className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+          style={{ background: "var(--color-primary)" }}
         >
           {isPending ? "送信中..." : "コードを送る"}
         </button>
@@ -75,29 +85,33 @@ export function OtpForm({ redirectTo, submitLabel }: OtpFormProps) {
 
   return (
     <form onSubmit={handleVerifyCode} className="flex w-full max-w-xs flex-col gap-4">
-      <p className="text-sm text-gray-600">{email} に届いた6桁のコードを入力してください</p>
-      <label className="flex flex-col gap-1 text-sm">
-        認証コード
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          maxLength={6}
-          required
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="rounded-lg border border-gray-300 px-4 py-3 text-center text-2xl tracking-widest"
-          placeholder="000000"
-        />
-      </label>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={isPending}
-        className="rounded-full bg-indigo-600 px-6 py-3 text-base font-medium text-white disabled:opacity-50"
-      >
-        {isPending ? "確認中..." : submitLabel}
-      </button>
+      <p className="text-sm text-ink-weak">{email} に届いた6桁のコードを入力してください</p>
+      <OtpCodeInput value={code} onChange={setCode} hasError={!!error} disabled={isPending} />
+      {error && (
+        <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+          {error}(古いメールに届いたコードを見ている可能性があります)
+        </p>
+      )}
+      {error ? (
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={requestCode}
+          className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+          style={{ background: "var(--color-primary)" }}
+        >
+          {isPending ? "送信中..." : "新しいコードを送りなおす"}
+        </button>
+      ) : (
+        <button
+          type="submit"
+          disabled={isPending || code.length < 6}
+          className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+          style={{ background: "var(--color-primary)" }}
+        >
+          {isPending ? "確認中..." : submitLabel}
+        </button>
+      )}
     </form>
   );
 }

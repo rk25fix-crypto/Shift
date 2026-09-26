@@ -21,6 +21,21 @@ export async function readTestOtp(page: Page, email: string): Promise<string> {
   return body.otp;
 }
 
+/** The 6-box OTP input's group role (components/auth/OtpCodeInput.tsx) — each box's own aria-label ("認証コード N桁目") contains this group's label ("認証コード") as a substring, so `getByLabel("認証コード")` alone matches all 7 elements at once (strict-mode violation). Callers should await this locator's visibility before reading back a just-sent OTP, same as before this component existed. */
+export function otpCodeGroup(page: Page) {
+  return page.getByRole("group", { name: "認証コード" });
+}
+
+/**
+ * Fills the 6-box OTP input by clicking its first box and typing the whole
+ * code — the component's own auto-advance-on-input logic distributes one
+ * digit per box from there, the same as a real user tabbing through them.
+ */
+export async function fillOtpCode(page: Page, otp: string): Promise<void> {
+  await otpCodeGroup(page).locator("input").first().click();
+  await page.keyboard.type(otp);
+}
+
 /**
  * Signs up a brand-new organization end-to-end through the real UI (not a
  * shortcut through server actions), landing on /today. Each call needs a
@@ -48,9 +63,9 @@ export async function signUpNewOrg(
   await page.getByLabel("メールアドレス").fill(email);
   await page.getByRole("button", { name: /無料で始める/ }).click();
 
-  await expect(page.getByLabel("認証コード")).toBeVisible();
+  await expect(otpCodeGroup(page)).toBeVisible();
   const otp = await readTestOtp(page, email);
-  await page.getByLabel("認証コード").fill(otp);
+  await fillOtpCode(page, otp);
   await page.getByRole("button", { name: "次へ" }).click();
 
   // 勤務の確認 — accept the generated shift types as-is.

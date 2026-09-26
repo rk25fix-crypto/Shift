@@ -19,16 +19,24 @@ export function PayrollEstimate({ estimate }: PayrollEstimateProps) {
   ].filter(Boolean);
 
   return (
-    <div className="mx-4 flex flex-col gap-1 rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <p className="text-sm font-medium text-gray-600">今月の給与概算</p>
-      <p className="text-2xl font-bold text-gray-900">
+    <div
+      className="mx-4 flex flex-col gap-1 rounded-[18px] border p-4"
+      style={{ borderColor: "var(--color-success-border)", background: "var(--color-success-soft)" }}
+    >
+      <p className="text-sm font-bold" style={{ color: "var(--color-success-ink)" }}>
+        今月の給与概算
+      </p>
+      <p
+        className="font-heading text-[30px] font-black"
+        style={{ color: "var(--color-success-ink-strong)" }}
+      >
         ¥{estimate.estimatedPay.toLocaleString("ja-JP")}
       </p>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs" style={{ color: "var(--color-success-ink)" }}>
         {estimate.totalHours}時間 × 時給¥{estimate.hourlyWage.toLocaleString("ja-JP")}
         {premiumNotes.length > 0 && `(内 ${premiumNotes.join("・")} 割増を含む)`}
       </p>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-ink-weakest">
         深夜・残業・法定休日(日曜と仮定)の割増を含む概算です。実際の給与計算を代替するものではありません
       </p>
     </div>

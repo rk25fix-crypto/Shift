@@ -18,7 +18,10 @@ export async function generateDraftShifts(
   if (!isManager(role)) return { error: "権限がありません" };
 
   const result = await generateDraftShiftsCore(organizationId, startDate, endDateExclusive);
-  if (!result.error) revalidatePath("/week");
+  if (!result.error) {
+    revalidatePath("/week");
+    revalidatePath("/today");
+  }
   return result;
 }
 
