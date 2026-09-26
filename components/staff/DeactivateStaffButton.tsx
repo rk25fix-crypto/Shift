@@ -21,12 +21,17 @@ export function DeactivateStaffButton({ staffId }: { staffId: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+          {error}
+        </p>
+      )}
       <button
         type="button"
         onClick={handleDeactivate}
         disabled={isPending}
-        className="rounded-full border border-red-300 px-6 py-3 text-base font-medium text-red-600 disabled:opacity-50"
+        className="rounded-full border px-6 py-3 text-base font-bold disabled:opacity-50"
+        style={{ borderColor: "var(--color-danger-border)", color: "var(--color-danger-ink-strong)" }}
       >
         {isPending ? "処理中..." : "スタッフを無効化する"}
       </button>

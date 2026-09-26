@@ -29,11 +29,11 @@ function sideLabel(
 
 export function SwapRequestList({ requests, staffNameById, shiftTypeLabelById }: SwapRequestListProps) {
   if (requests.length === 0) {
-    return <p className="px-4 py-6 text-sm text-gray-500">交代申請はまだありません。</p>;
+    return <p className="px-4 py-6 text-sm text-ink-weak">交代申請はまだありません。</p>;
   }
 
   return (
-    <ul className="flex flex-col divide-y divide-gray-100">
+    <ul className="flex flex-col divide-y divide-border-subtle">
       {requests.map((request) => (
         <SwapRequestRow
           key={request.id}
@@ -72,25 +72,39 @@ function SwapRequestRow({
     });
   }
 
+  const isPendingRequest = request.status === "pending";
+
   return (
-    <li className="flex flex-col gap-2 px-4 py-4">
+    <li
+      className="flex flex-col gap-2 rounded-[18px] px-4 py-4"
+      style={
+        isPendingRequest
+          ? { border: "2px solid var(--color-primary)" }
+          : { border: "1px solid transparent" }
+      }
+    >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-600">{formatDateJapanese(request.date)}</p>
-        <span className="text-xs font-medium text-gray-400">{STATUS_LABEL[request.status]}</span>
+        <p className="text-sm font-bold text-ink-weak">{formatDateJapanese(request.date)}</p>
+        <span className="text-xs font-bold text-ink-weakest">{STATUS_LABEL[request.status]}</span>
       </div>
-      <p className="text-base">
+      <p className="text-base text-ink">
         {sideLabel(fromName, request.fromShiftTypeId, shiftTypeLabelById)}
         {" ⇄ "}
         {sideLabel(toName, request.toShiftTypeId, shiftTypeLabelById)}
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {request.status === "pending" && (
+      {error && (
+        <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+          {error}
+        </p>
+      )}
+      {isPendingRequest && (
         <div className="flex gap-2">
           <button
             type="button"
             disabled={isPending}
             onClick={() => handleDecide("approved")}
-            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            style={{ background: "var(--color-primary)" }}
           >
             承認する
           </button>
@@ -98,7 +112,7 @@ function SwapRequestRow({
             type="button"
             disabled={isPending}
             onClick={() => handleDecide("rejected")}
-            className="rounded-full border border-gray-300 px-4 py-2 text-sm text-gray-600 disabled:opacity-50"
+            className="rounded-full border border-border px-4 py-2 text-sm text-ink-weak disabled:opacity-50"
           >
             却下する
           </button>

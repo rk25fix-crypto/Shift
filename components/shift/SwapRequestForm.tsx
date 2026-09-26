@@ -54,7 +54,7 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
 
   if (staff.length < 2) {
     return (
-      <p className="px-4 text-sm text-gray-500">交代申請にはスタッフが2人以上必要です。</p>
+      <p className="px-4 text-sm text-ink-weak">交代申請にはスタッフが2人以上必要です。</p>
     );
   }
 
@@ -67,18 +67,18 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
           required
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+          className="rounded-lg border border-border px-4 py-3 text-base"
         />
       </label>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3">
-        <p className="text-sm font-medium text-gray-600">交代したいスタッフ</p>
+      <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+        <p className="text-sm font-medium text-ink-weak">交代したいスタッフ</p>
         <label className="flex flex-col gap-1 text-sm">
           スタッフ
           <select
             value={fromStaffId}
             onChange={(e) => setFromStaffId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
           >
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
@@ -92,7 +92,7 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
           <select
             value={fromShiftTypeId}
             onChange={(e) => setFromShiftTypeId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
           >
             <option value={NONE}>なし(休みだった)</option>
             {shiftTypes.map((t) => (
@@ -104,14 +104,14 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
         </label>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3">
-        <p className="text-sm font-medium text-gray-600">交代相手</p>
+      <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+        <p className="text-sm font-medium text-ink-weak">交代相手</p>
         <label className="flex flex-col gap-1 text-sm">
           スタッフ
           <select
             value={toStaffId}
             onChange={(e) => setToStaffId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
           >
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
@@ -125,7 +125,7 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
           <select
             value={toShiftTypeId}
             onChange={(e) => setToShiftTypeId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-4 py-3 text-base"
+            className="rounded-lg border border-border px-4 py-3 text-base"
           >
             <option value={NONE}>なし(休みだった)</option>
             {shiftTypes.map((t) => (
@@ -137,12 +137,17 @@ export function SwapRequestForm({ staff, shiftTypes }: SwapRequestFormProps) {
         </label>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-sm" style={{ color: "var(--color-danger-ink)" }}>
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"
         disabled={isPending}
-        className="rounded-full bg-indigo-600 px-6 py-3 text-base font-medium text-white disabled:opacity-50"
+        className="rounded-full px-6 py-3 text-base font-bold font-heading text-white disabled:opacity-50"
+        style={{ background: "var(--color-primary)" }}
       >
         {isPending ? "申請中..." : "この内容で交代申請を作る"}
       </button>

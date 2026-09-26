@@ -64,7 +64,7 @@ export default async function StaffDetailPage({
 
   return (
     <div className="flex flex-1 flex-col">
-      <h1 className="px-4 pt-6 text-xl font-bold">{staff.name}</h1>
+      <h1 className="px-4 pt-6 text-xl font-bold font-heading text-ink">{staff.name}</h1>
 
       <div className="mt-4 flex flex-col gap-3">
         <LaborWarningsList warnings={staffWarnings} />
@@ -75,7 +75,7 @@ export default async function StaffDetailPage({
       </div>
 
       <section className="flex flex-col gap-2 py-6">
-        <h2 className="px-4 text-sm font-semibold text-gray-500">今月のシフト</h2>
+        <h2 className="px-4 text-sm font-bold text-ink-weak">今月のシフト</h2>
         <StaffMonthShifts
           staffId={staff.id}
           assignments={monthAssignments}
@@ -84,7 +84,7 @@ export default async function StaffDetailPage({
         />
       </section>
 
-      <h2 className="px-4 pb-2 text-sm font-semibold text-gray-500">編集</h2>
+      <h2 className="px-4 pb-2 text-sm font-bold text-ink-weak">編集</h2>
       <StaffForm
         existing={staff}
         existingHourlyWage={hourlyWage}

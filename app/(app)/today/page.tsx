@@ -9,6 +9,7 @@ import { addDays, datesInWeek, formatDateJapanese, isValidIsoDate, mondayOf, tod
 import { DayList } from "@/components/shift/DayList";
 import { DateStrip } from "@/components/shift/DateStrip";
 import { DateJumpForm } from "@/components/shift/DateJumpForm";
+import { WeekAutoGenerateFab } from "@/components/shift/WeekAutoGenerateFab";
 
 export default async function TodayPage({
   searchParams,
@@ -38,6 +39,7 @@ export default async function TodayPage({
   // only after. The DayList below still only shows confirmed assignments.
   const unfilledDates = computeUnfilledDates(weekDates, requiredShiftTypes, weekAssignments);
   const filledDates = new Set(weekDates.filter((d) => !unfilledDates.has(d)));
+  const hasDrafts = weekAssignments.some((a) => a.status === "draft");
 
   const assignments = weekAssignments.filter((a) => a.date === date && a.status === "confirmed");
   const timeOff = weekTimeOff.filter((t) => t.date === date);
@@ -59,13 +61,12 @@ export default async function TodayPage({
       <DateStrip dates={weekDates} selectedDate={date} filledDates={filledDates} />
       <DateJumpForm date={date} />
       <DayList date={date} staff={staff} shiftTypes={shiftTypes} assignments={assignments} timeOff={timeOff} />
-      <Link
-        href={`/week?start=${monday}`}
-        className="fixed inset-x-0 z-10 mx-auto w-fit rounded-full px-5 py-3 text-sm font-bold font-heading text-white shadow-[0_6px_16px_rgba(196,96,31,.28)]"
-        style={{ background: "var(--color-primary)", bottom: "calc(env(safe-area-inset-bottom) + 78px)" }}
-      >
-        週表示で自動で組む
-      </Link>
+      <WeekAutoGenerateFab
+        startDate={monday}
+        endDateExclusive={weekEndExclusive}
+        hasRequiredShiftTypes={requiredShiftTypes.length > 0}
+        hasDrafts={hasDrafts}
+      />
     </div>
   );
 }

@@ -6,7 +6,10 @@ import { provisionOrganizationCore } from "@/lib/auth/provision";
 import { createShiftTypeCore } from "@/lib/shift-types/write";
 import { createStaffCore } from "@/lib/staff/write";
 import { generateDraftShifts as generateDraftShiftsCore } from "@/lib/shifts/generate";
-import { addDays, mondayOf, todayInTimezone } from "@/lib/date";
+import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
+import { listStaff } from "@/lib/staff/queries";
+import { listShiftTypes } from "@/lib/shift-types/queries";
+import { addDays, datesInWeek, mondayOf, todayInTimezone } from "@/lib/date";
 import { INDUSTRY_OPTIONS, INDUSTRY_SHIFT_TYPE_PRESETS, type IndustryKey } from "@/lib/shift-types/presets";
 
 export interface OnboardingInput {
@@ -15,6 +18,14 @@ export interface OnboardingInput {
   /** Shift-type codes toggled off in ステップ1「勤務の確認」— everything else in the industry preset gets created. */
   disabledShiftTypeCodes: string[];
   staffNames: string[];
+}
+
+/** The current week's draft, for ステップ3「できあがり」(design_handoff … README「1a」) to show before it's confirmed. */
+export interface OnboardingDraft {
+  dates: string[];
+  staff: { id: string; name: string }[];
+  shiftTypes: { id: string; code: string; name: string }[];
+  assignments: { staffId: string; date: string; shiftTypeId: string }[];
 }
 
 const MAX_STAFF_NAMES = 100;
@@ -44,18 +55,18 @@ const MAX_STAFF_NAMES = 100;
  */
 export async function completeOnboarding(
   input: OnboardingInput,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; draft: OnboardingDraft | null }> {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return { error: "ログインが必要です" };
+  if (!session) return { error: "ログインが必要です", draft: null };
 
   const businessName = input.businessName.trim();
-  if (!businessName) return { error: "事業所名を入力してください" };
+  if (!businessName) return { error: "事業所名を入力してください", draft: null };
   if (!INDUSTRY_OPTIONS.some((o) => o.key === input.industryKey)) {
-    return { error: "業種を選び直してください" };
+    return { error: "業種を選び直してください", draft: null };
   }
 
   const orgResult = await provisionOrganizationCore(businessName, session.user.id, input.industryKey);
-  if (!orgResult.organizationId) return { error: orgResult.error };
+  if (!orgResult.organizationId) return { error: orgResult.error, draft: null };
   const { organizationId } = orgResult;
 
   const presets = INDUSTRY_SHIFT_TYPE_PRESETS[input.industryKey];
@@ -83,13 +94,39 @@ export async function completeOnboarding(
     if (!result.error) createdStaffCount++;
   }
 
-  if (createdShiftTypeCount > 0 && createdStaffCount > 0) {
-    const monday = mondayOf(todayInTimezone());
-    // Best-effort: a generation failure here (e.g. genuinely nobody
-    // available for a slot) shouldn't block finishing signup — the manager
-    // can always generate again from the week view.
-    await generateDraftShiftsCore(organizationId, monday, addDays(monday, 7));
+  if (createdShiftTypeCount === 0 || createdStaffCount === 0) {
+    return { error: null, draft: null };
   }
 
-  return { error: null };
+  const monday = mondayOf(todayInTimezone());
+  const weekEndExclusive = addDays(monday, 7);
+  // Best-effort: a generation failure here (e.g. genuinely nobody available
+  // for a slot) shouldn't block finishing signup — the manager can always
+  // generate again from the week view, and the wizard just skips ステップ3
+  // below when there's nothing to show.
+  await generateDraftShiftsCore(organizationId, monday, weekEndExclusive);
+
+  const [staff, shiftTypes, assignments] = await Promise.all([
+    listStaff(organizationId),
+    listShiftTypes(organizationId),
+    getAssignmentsForOrgRange(organizationId, monday, weekEndExclusive, { includeDrafts: true }),
+  ]);
+
+  if (assignments.length === 0) {
+    return { error: null, draft: null };
+  }
+
+  return {
+    error: null,
+    draft: {
+      dates: datesInWeek(monday),
+      staff: staff.map((s) => ({ id: s.id, name: s.name })),
+      shiftTypes: shiftTypes.map((t) => ({ id: t.id, code: t.code, name: t.name })),
+      assignments: assignments.map((a) => ({
+        staffId: a.staffId,
+        date: a.date,
+        shiftTypeId: a.shiftTypeId,
+      })),
+    },
+  };
 }
