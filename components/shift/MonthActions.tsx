@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { CalendarDays } from "lucide-react";
+import { SectionTitle } from "@/components/ui/Section";
 import {
   confirmDraftShifts,
   discardDraftShifts,
@@ -87,9 +89,9 @@ export function MonthActions({ month, monthStart, monthEndExclusive }: MonthActi
   }
 
   return (
-    <div className="flex flex-col gap-2 px-4">
-      <p className="text-sm font-bold text-ink-weak">{monthLabel}をまとめて操作</p>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2">
+      <SectionTitle icon={CalendarDays}>{monthLabel}をまとめて操作</SectionTitle>
+      <div className="flex flex-wrap gap-2 px-4">
         <button
           type="button"
           disabled={isPending}
@@ -116,7 +118,7 @@ export function MonthActions({ month, monthStart, monthEndExclusive }: MonthActi
           この月の下書きを破棄
         </button>
       </div>
-      {message && <p className="text-sm text-ink-weak">{message}</p>}
+      {message && <p className="px-4 text-sm text-ink-weak">{message}</p>}
     </div>
   );
 }

@@ -19,6 +19,8 @@ import { WeekGrid } from "@/components/shift/WeekGrid";
 import { WeekActions } from "@/components/shift/WeekActions";
 import { MonthActions } from "@/components/shift/MonthActions";
 import { LaborWarningsList } from "@/components/shift/LaborWarningsList";
+import { SectionTitle } from "@/components/ui/Section";
+import { CalendarRange, LayoutGrid, Sparkles } from "lucide-react";
 
 export default async function WeekPage({
   searchParams,
@@ -71,51 +73,60 @@ export default async function WeekPage({
 
   return (
     <div className="flex flex-1 flex-col gap-4 py-6">
-      <div className="flex items-center justify-between px-4">
-        <Link
-          href={`/week?start=${addDays(monday, -7)}`}
-          aria-label="前の週"
-          className="p-2 text-xl text-ink-weak"
-        >
-          ‹
-        </Link>
-        <div className="flex flex-col items-center">
-          <h1 className="text-lg font-bold font-heading text-ink">
-            {dates[0].slice(5).replace("-", "/")}〜{dates[6].slice(5).replace("-", "/")}
-          </h1>
-          <Link href="/week" className="text-xs text-primary-ink">
-            今週へ
+      <section className="flex flex-col gap-2">
+        <SectionTitle icon={CalendarRange}>表示する週</SectionTitle>
+        <div className="flex items-center justify-between px-4">
+          <Link
+            href={`/week?start=${addDays(monday, -7)}`}
+            aria-label="前の週"
+            className="p-2 text-xl text-ink-weak"
+          >
+            ‹
+          </Link>
+          <div className="flex flex-col items-center">
+            <h1 className="text-lg font-bold font-heading text-ink">
+              {dates[0].slice(5).replace("-", "/")}〜{dates[6].slice(5).replace("-", "/")}
+            </h1>
+            <Link href="/week" className="text-xs text-primary-ink">
+              今週へ
+            </Link>
+          </div>
+          <Link
+            href={`/week?start=${addDays(monday, 7)}`}
+            aria-label="次の週"
+            className="p-2 text-xl text-ink-weak"
+          >
+            ›
           </Link>
         </div>
-        <Link
-          href={`/week?start=${addDays(monday, 7)}`}
-          aria-label="次の週"
-          className="p-2 text-xl text-ink-weak"
-        >
-          ›
-        </Link>
-      </div>
-      <WeekActions
-        startDate={monday}
-        endDateExclusive={weekEndExclusive}
-        hasRequiredShiftTypes={hasRequiredShiftTypes}
-        hasDrafts={hasDrafts}
-      />
+      </section>
+      <section className="flex flex-col gap-2">
+        <SectionTitle icon={Sparkles}>この週の操作</SectionTitle>
+        <WeekActions
+          startDate={monday}
+          endDateExclusive={weekEndExclusive}
+          hasRequiredShiftTypes={hasRequiredShiftTypes}
+          hasDrafts={hasDrafts}
+        />
+      </section>
       {hasRequiredShiftTypes && (
         <MonthActions month={month} monthStart={monthStart} monthEndExclusive={monthEndExclusive} />
       )}
       {/* Explains what each ⚠ in the grid below actually means — a bare
           icon next to a name gives no way to tell why without this. */}
       <LaborWarningsList warnings={warnings} staffNameById={staffNameById} />
-      <WeekGrid
-        dates={dates}
-        staff={staff}
-        shiftTypes={shiftTypes}
-        assignments={assignments}
-        timeOff={timeOff}
-        staffIdsWithWarnings={staffIdsWithWarnings}
-        unfilledDates={unfilledDates}
-      />
+      <section className="flex flex-col gap-2">
+        <SectionTitle icon={LayoutGrid}>シフト表</SectionTitle>
+        <WeekGrid
+          dates={dates}
+          staff={staff}
+          shiftTypes={shiftTypes}
+          assignments={assignments}
+          timeOff={timeOff}
+          staffIdsWithWarnings={staffIdsWithWarnings}
+          unfilledDates={unfilledDates}
+        />
+      </section>
     </div>
   );
 }

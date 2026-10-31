@@ -34,6 +34,7 @@ test.describe("print view", () => {
     await expect(page.getByRole("button", { name: "早1" })).toBeVisible();
 
     await page.goto("/settings/organization");
+    await page.getByText("印刷・レポート").click();
     await page.getByRole("button", { name: "印刷用シフト表を開く" }).click();
     await page.waitForURL(/\/print\/.+\/\d{4}-\d{2}$/);
 
@@ -48,6 +49,7 @@ test.describe("print view", () => {
       email: `e2e-print-a-${testInfo.testId}-${crypto.randomUUID()}@example.com`,
     });
     await page.goto("/settings/organization");
+    await page.getByText("印刷・レポート").click();
     await page.getByRole("button", { name: "印刷用シフト表を開く" }).click();
     await page.waitForURL(/\/print\/.+\/\d{4}-\d{2}$/);
     const ownUrl = page.url();
