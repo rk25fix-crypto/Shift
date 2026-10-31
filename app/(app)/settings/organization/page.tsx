@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { BarChart3, CreditCard, History, Repeat, Tag } from "lucide-react";
+import { Building2, ChevronRight, CreditCard, Printer, Repeat, Tag } from "lucide-react";
+import { MenuSection } from "@/components/ui/Section";
 import {
   isManager,
   listMembershipsForCurrentUser,
@@ -21,14 +22,7 @@ export default async function OrganizationSettingsPage() {
   const allMemberships = await listMembershipsForCurrentUser();
   const organizationName = allMemberships.find((m) => m.organizationId === organizationId)?.organizationName ?? "";
 
-  const links = [
-    isManager(role) && { href: "/settings/reports", label: "稼働レポート", icon: BarChart3 },
-    { href: "/swaps", label: "交代の申請・一覧", icon: Repeat },
-    { href: "/settings/shift-types", label: "シフト種別の設定", icon: Tag },
-    isManager(role) && { href: "/settings/audit-log", label: "変更履歴", icon: History },
-    { href: "/billing", label: "お支払い・プラン", icon: CreditCard },
-  ].filter((link): link is { href: string; label: string; icon: typeof BarChart3 } => Boolean(link));
-
+  const manager = isManager(role);
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 py-6">
       <div>
@@ -39,31 +33,52 @@ export default async function OrganizationSettingsPage() {
           として利用中
         </p>
       </div>
+      {/* Kept outside the folds: which org you're in is context, not a setting to dig for. */}
       {allMemberships.length > 1 && (
         <OrgSwitcher memberships={allMemberships} currentOrgId={organizationId} />
       )}
-      <ul className="flex flex-col gap-2">
-        {links.map(({ href, label, icon: Icon }) => (
-          <li key={href}>
-            <Link
-              href={href}
-              className="flex items-center gap-3 rounded-[16px] border border-border bg-surface p-4 text-sm font-bold text-ink"
-            >
-              <Icon size={20} color="var(--color-primary)" />
-              {label}
-            </Link>
-          </li>
-        ))}
-      </ul>
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">シフト表の印刷</p>
-        <PrintLinkForm organizationId={organizationId} />
+        <MenuSection icon={Tag} title="シフトの決まり" summary="シフト種別・時間・毎日必須の勤務">
+          <MenuLink href="/settings/shift-types" label="シフト種別の設定" />
+        </MenuSection>
+        <MenuSection icon={Repeat} title="交代" summary="交代の申請・申請の一覧">
+          <MenuLink href="/swaps" label="交代の申請・一覧" />
+        </MenuSection>
+        <MenuSection
+          icon={Printer}
+          title="印刷・レポート"
+          summary={manager ? "シフト表の印刷・稼働レポート" : "シフト表の印刷"}
+        >
+          <p className="text-xs font-bold text-ink-weak">シフト表の印刷</p>
+          <PrintLinkForm organizationId={organizationId} />
+          {manager && <MenuLink href="/settings/reports" label="稼働レポート" />}
+        </MenuSection>
+        <MenuSection
+          icon={CreditCard}
+          title={manager ? "お支払い・履歴" : "お支払い"}
+          summary={manager ? "プラン・お支払い・変更履歴" : "プラン・お支払い"}
+        >
+          <MenuLink href="/billing" label="お支払い・プラン" />
+          {manager && <MenuLink href="/settings/audit-log" label="変更履歴" />}
+        </MenuSection>
+        {role === "owner" && (
+          <MenuSection icon={Building2} title="事業所" summary="事業所の削除">
+            <DeleteOrganizationButton organizationName={organizationName} />
+          </MenuSection>
+        )}
       </div>
-      {role === "owner" && (
-        <div className="mt-4 border-t border-border pt-4">
-          <DeleteOrganizationButton organizationName={organizationName} />
-        </div>
-      )}
     </div>
+  );
+}
+
+function MenuLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between rounded-[12px] bg-primary-soft px-4 py-3 text-sm font-bold text-primary-ink"
+    >
+      {label}
+      <ChevronRight size={16} />
+    </Link>
   );
 }
