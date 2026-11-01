@@ -83,6 +83,13 @@ export default defineConfig({
         // vinext's client build output — see wrangler.jsonc's assets.directory.
         globDirectory: "dist/client",
         globPatterns: ["**/*.{js,css,ico,png,svg,webp}"],
+        // Web Push handlers live in a plain file (public/push-sw.js) that the
+        // generated worker importScripts()s. It's kept out of the precache
+        // and imported with a per-build query string: the SW spec fetches
+        // imports through the HTTP cache by default, so without the version
+        // a stale push-sw.js could outlive a deploy.
+        globIgnores: ["push-sw.js"],
+        importScripts: [`/push-sw.js?v=${Date.now()}`],
       },
     }).map((plugin) =>
       plugin.name === "vite-plugin-pwa:build"

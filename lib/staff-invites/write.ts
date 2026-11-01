@@ -7,6 +7,9 @@ import type { StaffInput } from "@/lib/staff/write";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 未使用リンクは7日で失効(design_handoff_shift_bright_flow/README.md)
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // クレーム後のセッションは30日
+const PAIRING_TTL_MS = 10 * 60 * 1000; // 引き継ぎコードは10分で失効
+// 紛らわしい文字(0/O/1/I)を除いた32種。256が32の倍数なので乗算バイアスなしで選べる。
+const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 function generateToken(): string {
   return crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
@@ -87,7 +90,7 @@ export async function claimInviteCore(
   const db = getRawDb();
 
   const [invite] = await db.select().from(staffInvites).where(eq(staffInvites.token, token));
-  if (!invite) return { error: "招待リンクが見つかりません" };
+  if (!invite || invite.kind !== "invite") return { error: "招待リンクが見つかりません" };
   if (invite.claimedAt) return { error: "この招待リンクはすでに使用されています" };
   if (invite.expiresAt.getTime() < Date.now()) return { error: "この招待リンクは期限切れです" };
 
@@ -129,4 +132,109 @@ export async function claimInviteCore(
   }
 
   return { organizationId: invite.organizationId, staffId: invite.staffId, sessionToken };
+}
+
+export function generatePairingCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => PAIRING_ALPHABET[b % 32]).join("");
+}
+
+export function normalizePairingCode(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/**
+ * Issues a short-lived code that a logged-in staff member can type into their
+ * *home-screen* copy of the app. iOS gives an installed PWA its own cookie
+ * jar, so the browser session that opened the invite link doesn't carry over
+ * — and the invite link itself is single-use. Unlike createInviteCore this
+ * leaves the staff member's existing sessions and unclaimed invite alone.
+ */
+export async function createPairingCodeCore(
+  organizationId: string,
+  staffId: string,
+): Promise<{ code: string; error: null } | { code: null; error: string }> {
+  const { db } = getScopedDb(organizationId);
+
+  const [staffRow] = await db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId), eq(staff.isActive, true)));
+  if (!staffRow) return { code: null, error: "スタッフが見つかりません" };
+
+  const code = generatePairingCode();
+  try {
+    await db.batch([
+      db
+        .delete(staffInvites)
+        .where(
+          and(
+            eq(staffInvites.organizationId, organizationId),
+            eq(staffInvites.staffId, staffId),
+            eq(staffInvites.kind, "pairing"),
+            isNull(staffInvites.claimedAt),
+          ),
+        ),
+      db.insert(staffInvites).values({
+        organizationId,
+        staffId,
+        token: code,
+        kind: "pairing",
+        expiresAt: new Date(Date.now() + PAIRING_TTL_MS),
+      }),
+    ]);
+  } catch (err) {
+    return { code: null, error: toUserFacingError(err, "コードの発行に失敗しました") };
+  }
+  return { code, error: null };
+}
+
+/**
+ * Exchanges a pairing code for a fresh staff session — same one-time,
+ * conditional-claim shape as claimInviteCore, but writes nothing else (no
+ * availability update) and only accepts `kind = 'pairing'` rows, so a
+ * pairing code can never be used as an invite token or vice versa.
+ */
+export async function claimPairingCodeCore(
+  rawCode: string,
+): Promise<ClaimedStaffSession | { error: string }> {
+  const code = normalizePairingCode(rawCode);
+  const notFound = { error: "コードが見つからないか、期限切れです" };
+  if (code.length !== 8) return notFound;
+
+  const db = getRawDb();
+  const [row] = await db.select().from(staffInvites).where(eq(staffInvites.token, code));
+  if (!row || row.kind !== "pairing" || row.claimedAt || row.expiresAt.getTime() < Date.now()) return notFound;
+
+  let claimed;
+  try {
+    [claimed] = await db
+      .update(staffInvites)
+      .set({ claimedAt: new Date() })
+      .where(and(eq(staffInvites.id, row.id), isNull(staffInvites.claimedAt)))
+      .returning({ id: staffInvites.id });
+  } catch (err) {
+    return { error: toUserFacingError(err, "コードの受け付けに失敗しました") };
+  }
+  if (!claimed) return notFound;
+
+  const [staffRow] = await db
+    .select({ isActive: staff.isActive })
+    .from(staff)
+    .where(and(eq(staff.id, row.staffId), eq(staff.organizationId, row.organizationId)));
+  if (!staffRow?.isActive) return notFound;
+
+  const sessionToken = generateToken();
+  try {
+    await db.insert(staffSessions).values({
+      organizationId: row.organizationId,
+      staffId: row.staffId,
+      token: sessionToken,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    });
+  } catch (err) {
+    return { error: toUserFacingError(err, "コードの受け付けに失敗しました") };
+  }
+
+  return { organizationId: row.organizationId, staffId: row.staffId, sessionToken };
 }

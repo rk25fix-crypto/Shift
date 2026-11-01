@@ -15,6 +15,7 @@ import { staff, staffSessions } from "@/drizzle/schema";
 export const STAFF_SESSION_COOKIE = "shift_staff_session";
 
 export interface CurrentStaffSession {
+  sessionId: string;
   organizationId: string;
   staffId: string;
 }
@@ -47,6 +48,7 @@ export async function getCurrentStaffSession(): Promise<CurrentStaffSession | nu
   const db = getRawDb();
   const [row] = await db
     .select({
+      sessionId: staffSessions.id,
       organizationId: staffSessions.organizationId,
       staffId: staffSessions.staffId,
       expiresAt: staffSessions.expiresAt,
@@ -58,5 +60,5 @@ export async function getCurrentStaffSession(): Promise<CurrentStaffSession | nu
 
   if (!row || row.expiresAt.getTime() < Date.now() || !row.staffIsActive) return null;
 
-  return { organizationId: row.organizationId, staffId: row.staffId };
+  return { sessionId: row.sessionId, organizationId: row.organizationId, staffId: row.staffId };
 }

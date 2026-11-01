@@ -3,6 +3,7 @@ import { getScopedDb, type ScopedDb } from "@/lib/db/scopedClient";
 import { toUserFacingError } from "@/lib/db/errors";
 import { auditLogInsertStatement } from "@/lib/audit/write";
 import { isValidIsoDate } from "@/lib/date";
+import { SHIFT_UPDATED_PUSH, scheduleStaffPush } from "@/lib/push/send";
 import { shiftAssignments, shiftTypes, staff, swapRequests, timeOffRequests } from "@/drizzle/schema";
 
 export interface SwapRequestInput {
@@ -295,5 +296,6 @@ export async function decideSwapRequestCore(
     };
   }
 
+  await scheduleStaffPush(organizationId, [fromStaffId, toStaffId], SHIFT_UPDATED_PUSH);
   return { error: null };
 }

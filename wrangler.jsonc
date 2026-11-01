@@ -26,8 +26,17 @@
   // survive deploys on their own, but are declared as required here so a
   // deploy fails loudly if either is ever missing, instead of surfacing as
   // a buried "Missing API key" error deep in the auth flow.
+  // Web Push (VAPID): while VAPID_PUBLIC_KEY is empty, notifications are
+  // silently skipped. Generate a pair with `node scripts/generate-vapid-keys.mjs`,
+  // paste the public half here, and register the private half with
+  // `npx wrangler secret put VAPID_PRIVATE_KEY`. The private key is not in
+  // secrets.required on purpose: the app works without push, so a missing key
+  // must not fail deploys. Both are declared/forwarded for local `wrangler dev`
+  // only via `--var` (see playwright.config.ts's note on the vars allow-list).
   "vars": {
-    "BETTER_AUTH_URL": "https://shift.sync-app-2026.workers.dev"
+    "BETTER_AUTH_URL": "https://shift.sync-app-2026.workers.dev",
+    "VAPID_SUBJECT": "https://shift.sync-app-2026.workers.dev",
+    "VAPID_PUBLIC_KEY": ""
   },
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"]

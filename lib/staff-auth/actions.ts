@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { claimInviteCore } from "@/lib/staff-invites/write";
+import { claimInviteCore, claimPairingCodeCore, createPairingCodeCore } from "@/lib/staff-invites/write";
+import { deletePushSubscriptionCore, upsertPushSubscriptionCore } from "@/lib/push/subscriptions";
 import { setStaffSessionCookie, getCurrentStaffSession } from "@/lib/staff-auth/session";
 import { requestOwnTimeOff as requestOwnTimeOffCore } from "@/lib/time-off/set";
 import { updateStaffAvailabilityCore } from "@/lib/staff/write";
@@ -73,4 +74,37 @@ export async function recordOwnActualShiftTime(
   );
   if (!result.error) revalidatePath("/staff-home");
   return result;
+}
+
+/** Staff-side: mints a 10-minute code to sign in the home-screen copy of the app (lib/staff-invites/write.ts's createPairingCodeCore). */
+export async function createOwnPairingCode(): Promise<{ code: string | null; error: string | null }> {
+  const session = await getCurrentStaffSession();
+  if (!session) return { code: null, error: "セッションが見つかりません。招待リンクをもう一度開いてください。" };
+  return createPairingCodeCore(session.organizationId, session.staffId);
+}
+
+/** Public: exchanges a pairing code for a staff session on this device — no membership/role involved, same as claimStaffInvite. */
+export async function claimPairingCode(code: string): Promise<{ error: string | null }> {
+  const result = await claimPairingCodeCore(code);
+  if ("error" in result) return { error: result.error };
+
+  await setStaffSessionCookie(result.sessionToken);
+  return { error: null };
+}
+
+/** Staff-side: registers this device for Web Push (lib/push/subscriptions.ts). Identity comes from the session only. */
+export async function subscribeOwnPush(input: {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}): Promise<{ error: string | null }> {
+  const session = await getCurrentStaffSession();
+  if (!session) return { error: "セッションが見つかりません。招待リンクをもう一度開いてください。" };
+  return upsertPushSubscriptionCore(session, input);
+}
+
+export async function unsubscribeOwnPush(endpoint: string): Promise<{ error: string | null }> {
+  const session = await getCurrentStaffSession();
+  if (!session) return { error: "セッションが見つかりません。招待リンクをもう一度開いてください。" };
+  return deletePushSubscriptionCore(session.organizationId, session.staffId, endpoint);
 }

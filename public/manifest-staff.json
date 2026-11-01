@@ -1,0 +1,22 @@
+{
+  "name": "Shift - スタッフ",
+  "short_name": "Shift",
+  "description": "自分のシフトの確認・休み希望・退勤の記録ができます",
+  "start_url": "/staff-home",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fffdf8",
+  "theme_color": "#c4601f",
+  "orientation": "portrait-primary",
+  "lang": "ja",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

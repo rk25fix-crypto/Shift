@@ -34,6 +34,7 @@ const eslintConfig = defineConfig([
       "lib/org/current.ts",
       "lib/org/actions.ts",
       "lib/db/scopedClient.isolation.d1.test.ts",
+      "lib/push/push.d1.test.ts",
       "app/api/stripe/webhook/route.ts",
       "lib/admin/**/*.ts",
       // Staff invite-claim and staff-session lookup have no organizationId to

@@ -7,6 +7,7 @@ import { listStaff } from "@/lib/staff/queries";
 import { listShiftTypes } from "@/lib/shift-types/queries";
 import { getAssignmentsForOrgRange } from "@/lib/shifts/queries";
 import { listTimeOffForRange } from "@/lib/time-off/queries";
+import { SHIFT_CONFIRMED_PUSH, scheduleStaffPush } from "@/lib/push/send";
 import { shiftAssignments } from "@/drizzle/schema";
 
 // D1 caps bound parameters per statement at 100 (confirmed empirically —
@@ -149,8 +150,9 @@ export async function confirmDraftShifts(
 
   const { db } = getScopedDb(organizationId);
 
+  let confirmed: { staffId: string }[];
   try {
-    await db
+    confirmed = await db
       .update(shiftAssignments)
       .set({ status: "confirmed" })
       .where(
@@ -160,11 +162,17 @@ export async function confirmDraftShifts(
           gte(shiftAssignments.date, startDate),
           lt(shiftAssignments.date, endDateExclusive),
         ),
-      );
+      )
+      .returning({ staffId: shiftAssignments.staffId });
   } catch (err) {
     return { error: toUserFacingError(err, "確定に失敗しました") };
   }
 
+  await scheduleStaffPush(
+    organizationId,
+    confirmed.map((row) => row.staffId),
+    SHIFT_CONFIRMED_PUSH,
+  );
   return { error: null };
 }
 
