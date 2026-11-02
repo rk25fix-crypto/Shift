@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Cloudflare 開発用シークレット(claude-dev-kit)
 .dev.vars
+
+# Claude Code 司令塔の進捗ボード（セッションごとのメモ）
+.claude/BOARD.md
